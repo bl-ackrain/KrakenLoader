@@ -7,11 +7,11 @@
 #include "ffconf.h"
 #include "sdfs_diskio.h"
 
-#include "mbed_debug.h"
+//#include "mbed_debug.h"
 //#include "FATFileSystem.h"
 #include "Loader.h"
 
-using namespace mbed;
+//using namespace mbed;
 
 namespace SDFS
 {

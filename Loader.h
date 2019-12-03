@@ -5,22 +5,23 @@
 #include "SDFileSystem.h"
 #include "Buttons.h"
 #include "Settings.h"
+#include "Themes.h"
+
+#define MAX_FILES 512
 
 enum class ItemType
 {
-    Folder,
+    Folder=0,
     File,
     BinGame,
     Pop,
     Gameboy
 };
 
-
 struct Item
 {
     char fullPath[_MAX_LFN];
     char displayName[27+1];
-    uint8_t Icon[24*12];
     size_t Size;
     bool hasIcon;
     ItemType Type;
@@ -38,6 +39,7 @@ class Loader
     };
 
     static constexpr const uint32_t GBMAGIC=0xEFBEADDE;
+    static constexpr const uint32_t BINMAGIC=0X10008000;
     static const uint8_t gbDefaultPal[16];
 public:
     void Init();
@@ -62,6 +64,7 @@ public:
     static char* FileMenu(const char *Folder);
     static SDFileSystem *sdFs;
     Settings settings;
+    static Theme theme;
 private:
     void m_nextItem();
     void m_prevItem();
@@ -74,6 +77,11 @@ private:
     size_t m_fileCount();
     void m_reloadItems();
     static bool m_drawDefaultBanner(uint16_t x, uint16_t y, ItemType Type);
+    static bool m_drawBootSplash();
+    static void m_getExtension(char* ext, char *fileName);
+    static bool m_loadIcons();
+    static bool m_scanFolderForGames(const char* currentDir, const char *name);
+    static bool m_binIsGame(const char* path);
     static size_t m_itemcount;
     static size_t m_itemlistcount;
     static size_t m_beginitem;
@@ -87,4 +95,8 @@ private:
     static size_t m_prevSelecteditem[10];
     static size_t m_prevBeginitem[10];
     static uint8_t m_pPrev;
+
+
+    static std::uint8_t* m_icons[4]; 
+ 
 };

@@ -5,8 +5,19 @@
 #include "iap.h"
 #include "Loader.h"
 
-
 const char *Settings::m_entries[8]={"View Mode", "Show All Files", "Loader Wait", "Volume Wait", "Time Format" , "Date Format", "Time", "Date"};
+
+void rtc_write(time_t t)
+{
+    // Disabled RTC
+    LPC_RTC->CTRL &= ~(1 << 7);
+
+    // Set count
+    LPC_RTC->COUNT = t;
+
+    //Enabled RTC
+    LPC_RTC->CTRL |= (1 << 7);
+}
 
 void Settings::Init()
 {
@@ -115,7 +126,7 @@ bool Settings::update()
                 size_t t=timePicker(m_timeformat==0, tmp);
                 if(t!=0xFFFFFFFF)
                 {
-                    set_time(time_to_epoch(tmp));
+                    rtc_write(time_to_epoch(tmp));
                 }
             }
             break;
@@ -131,7 +142,7 @@ bool Settings::update()
                     //tmp->tm_min=tmp2->tm_min;
                     //tmp->tm_hour=tmp2->tm_hour;
                     
-                    set_time(time_to_epoch(tmp));
+                    rtc_write(time_to_epoch(tmp));
                 }
             }
             break;
@@ -153,14 +164,14 @@ void Settings::draw()
     else
         m_redraw=false;
     
-    LCD::Clear(popPalette[Colors::DARK_GRAY]);
+    LCD::Clear(Loader::theme.Background);
 
 
-    Loader::drawRoundRect(2, 1, 70, 10, popPalette[Colors::WHITE]);
+    Loader::drawRoundRect(2, 1, 70, 10, Loader::theme.Boxes);
 
     LCD::cursorX=17;
     LCD::cursorY=2;
-    LCD::color=popPalette[Colors::BLACK];
+    LCD::color=Loader::theme.Text;
 
     LCD::print("Settings");
 
@@ -173,11 +184,11 @@ void Settings::drawEntries()
     for(size_t i = 0 ;i < 8; i++)
     {
 
-        LCD::fillRectangle(5,10+5+i*20, LCD::WIDTH-10,20-2, m_selected==i?popPalette[LIGHT_BLUE]:popPalette[WHITE]);
+        LCD::fillRectangle(5,10+5+i*20, LCD::WIDTH-10,20-2, m_selected==i?Loader::theme.Selected:Loader::theme.Boxes);
         if(m_selected==i)
-            LCD::color=popPalette[WHITE];
+            LCD::color=Loader::theme.SelectedText;
         else
-            LCD::color=popPalette[BLACK];
+            LCD::color=Loader::theme.Text;
 
         LCD::cursorX = 20;
         LCD::cursorY = 10+11+i*20;
@@ -273,13 +284,13 @@ size_t Settings::popupMenu(const char *entries[], size_t NumOfEntries)
     size_t selected=0;
     bool redraw=true;
     size_t menuYOffset=(176-10*NumOfEntries)/2;
-    Loader::drawRoundRect(10,menuYOffset-10,LCD::WIDTH-20,20+10*NumOfEntries,popPalette[Colors::BLACK]);
-    LCD::fillRectangle(12, menuYOffset-10+2, LCD::WIDTH-24, 20+10*NumOfEntries-4, popPalette[WHITE]);
-    LCD::color=popPalette[BLACK];
+    Loader::drawRoundRect(10,menuYOffset-10,LCD::WIDTH-20,20+10*NumOfEntries, Loader::theme.BoxBorder);
+    LCD::fillRectangle(12, menuYOffset-10+2, LCD::WIDTH-24, 20+10*NumOfEntries-4, Loader::theme.Boxes);
+    LCD::color=Loader::theme.Text;
     LCD::cursorX=20;
     LCD::cursorY=menuYOffset-7;
     LCD::print("Choose value");
-    LCD::fillRectangle(15,menuYOffset+3,LCD::WIDTH-30,1,popPalette[BLACK]);
+    LCD::fillRectangle(15,menuYOffset+3,LCD::WIDTH-30,1, Loader::theme.BoxBorder);
     while(true)
     {
         Buttons::update();
@@ -288,8 +299,8 @@ size_t Settings::popupMenu(const char *entries[], size_t NumOfEntries)
         {
             for(size_t i=0;i<NumOfEntries;i++)
             {
-                LCD::fillRectangle(11+2,5+10*i+menuYOffset,LCD::WIDTH-22-4,10,popPalette[selected==i?LIGHT_BLUE:WHITE]);
-                LCD::color=popPalette[selected==i?WHITE:BLACK];
+                LCD::fillRectangle(11+2,5+10*i+menuYOffset,LCD::WIDTH-22-4,10, selected==i?Loader::theme.Selected:Loader::theme.Boxes);
+                LCD::color=selected==i?Loader::theme.SelectedText:Loader::theme.Text;
 
                 LCD::cursorX=35;
                 LCD::cursorY=7+10*i+menuYOffset;
@@ -325,13 +336,13 @@ size_t Settings::timePicker(bool format24, struct tm *ltm)
     bool redraw=true;
     //uint16_t h = ltm->tm_hour;
     //uint16_t m = ltm->tm_min;
-    Loader::drawRoundRect(10,51,LCD::WIDTH-20, 74,popPalette[CAYAN]);
-    LCD::fillRectangle(12, 51+2, LCD::WIDTH-24, 70, popPalette[WHITE]);
-    LCD::color=popPalette[BLACK];
+    Loader::drawRoundRect(10,51,LCD::WIDTH-20, 74, Loader::theme.BoxBorder);
+    LCD::fillRectangle(12, 51+2, LCD::WIDTH-24, 70, Loader::theme.Boxes);
+    LCD::color=Loader::theme.Text;
     LCD::cursorX=86;
     LCD::cursorY=57;
     LCD::print("Set Time");
-    LCD::fillRectangle(15,70,LCD::WIDTH-30,1,popPalette[CAYAN]);
+    LCD::fillRectangle(15,70,LCD::WIDTH-30,1, Loader::theme.BoxBorder);
     while(true)
     {
         Buttons::update();
@@ -339,20 +350,20 @@ size_t Settings::timePicker(bool format24, struct tm *ltm)
         if(redraw)
         {
             redraw=false;
-            LCD::fillRectangle(12, 72, LCD::WIDTH-24, 70-20, popPalette[WHITE]);
-            LCD::color=popPalette[selected==0?LIGHT_BLUE:BLACK];
+            LCD::fillRectangle(12, 72, LCD::WIDTH-24, 70-20, Loader::theme.Boxes);
+            LCD::color=selected==0?Loader::theme.Selected:Loader::theme.Text;
 
             LCD::cursorX=90;
             LCD::cursorY=80;
             LCD::printNumber(format24?ltm->tm_hour:(ltm->tm_hour>12?ltm->tm_hour-12:(ltm->tm_hour==0?12:ltm->tm_hour)));
 
-            LCD::color=popPalette[BLACK];
+            LCD::color=Loader::theme.Text;
     
             LCD::cursorX=107;
 
             LCD::write(':');
 
-            LCD::color=popPalette[selected==1?LIGHT_BLUE:BLACK];
+            LCD::color=selected==1?Loader::theme.Selected:Loader::theme.Text;
             LCD::cursorX=118;
 
             LCD::printNumber(ltm->tm_min);
@@ -362,7 +373,7 @@ size_t Settings::timePicker(bool format24, struct tm *ltm)
 
         if(!format24)
         {
-            LCD::color=popPalette[BLACK];
+            LCD::color=Loader::theme.Text;
             LCD::cursorX=150;
             LCD::cursorY=80;
 
@@ -425,31 +436,31 @@ size_t Settings::datePicker(uint8_t dateFormat, struct tm *ltm)
     size_t selected=0;
     bool redraw=true;
 
-    Loader::drawRoundRect(10,51,LCD::WIDTH-20, 74,popPalette[CAYAN]);
-    LCD::fillRectangle(12, 51+2, LCD::WIDTH-24, 70, popPalette[WHITE]);
-    LCD::color=popPalette[BLACK];
+    Loader::drawRoundRect(10,51,LCD::WIDTH-20, 74, Loader::theme.BoxBorder);
+    LCD::fillRectangle(12, 51+2, LCD::WIDTH-24, 70, Loader::theme.Boxes);
+    LCD::color=Loader::theme.Text;
     LCD::cursorX=86;
     LCD::cursorY=57;
     LCD::print("Set Date");
-    LCD::fillRectangle(15,70,LCD::WIDTH-30,1,popPalette[CAYAN]);
+    LCD::fillRectangle(15,70,LCD::WIDTH-30,1, Loader::theme.BoxBorder);
     while(true)
     {
         Buttons::update();
         if(redraw)
         {
             redraw=false;
-            LCD::fillRectangle(12, 72, LCD::WIDTH-24, 70-20, popPalette[WHITE]);
-            LCD::color=popPalette[selected==0?LIGHT_BLUE:BLACK];
+            LCD::fillRectangle(12, 72, LCD::WIDTH-24, 70-20, Loader::theme.Boxes);
+            LCD::color=selected==0?Loader::theme.Selected:Loader::theme.Text;
             LCD::cursorX=83;
             LCD::cursorY=80;
             LCD::printNumber(dateFormat==0?ltm->tm_mday:ltm->tm_mon+1);
 
-            LCD::color=popPalette[selected==1?LIGHT_BLUE:BLACK];
+            LCD::color=selected==1?Loader::theme.Selected:Loader::theme.Text;
             LCD::cursorX=98;
 
             LCD::printNumber(dateFormat==0?ltm->tm_mon+1:ltm->tm_mday);
 
-            LCD::color=popPalette[selected==2?LIGHT_BLUE:BLACK];
+            LCD::color=selected==2?Loader::theme.Selected:Loader::theme.Text;
             LCD::cursorX=113;
 
             LCD::printNumber(ltm->tm_year+1900);

@@ -14,9 +14,11 @@
  * limitations under the License.
  */
 
+
 #include "SDFileSystem.h"
-#include "pinmap.h"
 #include "sdfs_diskio.h"
+
+#include <LPC11U6x.h>
 
 volatile uint8_t * const pSPI = (uint8_t *) 0x40040000;
 volatile uint16_t * const pSPI16 = (uint16_t *) 0x40040000;
@@ -43,7 +45,7 @@ inline int m_Spiwrite( int value ){
 }
 
 
-SDFileSystem::SDFileSystem(PinName mosi, PinName miso, PinName sclk, PinName cs, const char* name, PinName cd, SwitchType cdtype, int hz) : /*  FATFileSystem(name),*/ _spi(), m_Cs(cs, 1)/*, m_Cd(cd)*/, m_FREQ(hz)
+SDFileSystem::SDFileSystem()//PinName mosi, PinName miso, PinName sclk, PinName cs, const char* name, PinName cd, SwitchType cdtype, int hz) : /*  FATFileSystem(name), _spi(), m_Cs(cs, 1), m_Cd(cd),*/ m_FREQ(hz)
 {
     
     //Initialize the member variables
@@ -53,41 +55,29 @@ SDFileSystem::SDFileSystem(PinName mosi, PinName miso, PinName sclk, PinName cs,
     m_Status = STA_NOINIT;
 
     //Enable the internal pull-up resistor on MISO
-    pin_mode(miso, PullUp);
+    //pin_mode(miso, PullUp);
 
-    //Configure the SPI bus
-    //m_Spi(mosi, miso, sclk), m_Cs(cs, 1);
-    //m_Spi.format(8, 0);
+    LPC_GPIO_PORT->DIR[0] |= (1  << 7 );//cs pin out
 
-    //Set speed of SPI bus!!!! Jonne - this was totally missing!
-    //m_Spi.frequency(m_FREQ);
 
-    spi_init(&_spi, mosi, miso, sclk, NC);
-    spi_format(&_spi, 8, 0, 0);
-    spi_frequency(&_spi, m_FREQ);
+    //SET UP THE SPI
+    LPC_SYSCON->SYSAHBCLKCTRL |= 1 << 11;
+    LPC_SYSCON->SSP0CLKDIV = 0x01;
+    LPC_SYSCON->PRESETCTRL |= 1 << 0;
+
+    LPC_IOCON->PIO0_9 = (LPC_IOCON->PIO0_9 & ~(0x7)) | 0x1;   
+    LPC_IOCON->PIO0_8  = (LPC_IOCON->PIO0_8 & ~(0x7)) | 0x1;
+    LPC_IOCON->PIO0_6 = (LPC_IOCON->PIO0_6 & ~(0x7)) | 0x2; 
+
+
+    LPC_SSP0->CR0 |= 0x07; 
+    LPC_SSP0->CPSR =2; // 25MHz
+    LPC_SSP0->CR1 |= (1 << 1); //enable SPI0
+
+
     f_mount(0, &_fs);
-/*
-    //Configure the card detect pin
-    if (cdtype == SWITCH_POS_NO) {
-        m_Cd.mode(PullDown);
-        m_CdAssert = 1;
-        m_Cd.fall(this, &SDFileSystem::onCardRemoval);
-    } else if (cdtype == SWITCH_POS_NC) {
-        m_Cd.mode(PullDown);
-        m_CdAssert = 0;
-        m_Cd.rise(this, &SDFileSystem::onCardRemoval);
-    } else if (cdtype == SWITCH_NEG_NO) {
-        m_Cd.mode(PullUp);
-        m_CdAssert = 0;
-        m_Cd.rise(this, &SDFileSystem::onCardRemoval);
-    } else if (cdtype == SWITCH_NEG_NC) {
-        m_Cd.mode(PullUp);
-        m_CdAssert = 1;
-        m_Cd.fall(this, &SDFileSystem::onCardRemoval);
-    } else {
-*/
-        m_CdAssert = -1;
-//    }
+
+    m_CdAssert = -1;
 }
 
 SDFileSystem::CardType SDFileSystem::card_type()
@@ -180,10 +170,12 @@ int SDFileSystem::disk_initialize()
 
     //Set the SPI frequency to 400kHz for initialization
     //m_Spi.frequency(400000);
-    spi_frequency(&_spi, 400000);
+    //my_spi_frequency(400000);
 
     //Send 80 dummy clocks with /CS deasserted and DI held high
-    m_Cs = 1;
+    //m_Cs = 1;
+    LPC_GPIO_PORT->SET[0] = 1 << 7; 
+
     for (int i = 0; i < 10; i++)
         m_Spiwrite(0xFF);//m_Spi.write(0xFF);
 
@@ -243,12 +235,12 @@ int SDFileSystem::disk_initialize()
                 m_CardType = CARD_SD;
 
             //Increase the SPI frequency to full speed (up to 25MHz for SDCv2)
-            if (m_FREQ > 25000000)
+            //if (m_FREQ > 25000000)
                 //m_Spi.frequency(25000000);
-                spi_frequency(&_spi, 400000);
-            else
+            //    my_spi_frequency(400000);
+            //else
                 //m_Spi.frequency(m_FREQ);
-                spi_frequency(&_spi, m_FREQ);
+            //    my_spi_frequency(m_FREQ);
         } else {
             //Initialization failed
             m_CardType = CARD_UNKNOWN;
@@ -277,12 +269,12 @@ int SDFileSystem::disk_initialize()
             m_CardType = CARD_SD;
 
             //Increase the SPI frequency to full speed (up to 25MHz for SDCv1)
-            if (m_FREQ > 25000000)
+            //if (m_FREQ > 25000000)
                 //m_Spi.frequency(25000000);
-                spi_frequency(&_spi, 25000000);
-            else
+            //    my_spi_frequency(25000000);
+            //else
                 //m_Spi.frequency(m_FREQ);
-                spi_frequency(&_spi, m_FREQ);
+            //    my_spi_frequency(m_FREQ);
         } else {
             //Try to initialize the card using CMD1(0x00100000) for 1 second
             //m_Timer.start();
@@ -298,12 +290,12 @@ int SDFileSystem::disk_initialize()
                 m_CardType = CARD_MMC;
 
                 //Increase the SPI frequency to full speed (up to 20MHz for MMCv3)
-                if (m_FREQ > 20000000)
+                //if (m_FREQ > 20000000)
                     //m_Spi.frequency(20000000);
-                    spi_frequency(&_spi, 20000000);
-                else
+                //    my_spi_frequency(20000000);
+                //else
                     //m_Spi.frequency(m_FREQ);
-                    spi_frequency(&_spi, m_FREQ);
+                //   my_spi_frequency(m_FREQ);
             } else {
                 //Initialization failed
                 m_CardType = CARD_UNKNOWN;
@@ -470,7 +462,8 @@ inline bool SDFileSystem::waitReady(int timeout)
 inline bool SDFileSystem::select()
 {
     //Assert /CS
-    m_Cs = 0;
+    //m_Cs = 0;
+    LPC_GPIO_PORT->CLR[0] = 1 << 7;
 
     //Send 8 dummy clocks with DI held high to enable DO
     //m_Spi.write(0xFF);
@@ -489,7 +482,8 @@ inline bool SDFileSystem::select()
 inline void SDFileSystem::deselect()
 {
     //Deassert /CS
-    m_Cs = 1;
+    //m_Cs = 1;
+    LPC_GPIO_PORT->SET[0] = 1 << 7;
 
     //Send 8 dummy clocks with DI held high to disable DO
     //m_Spi.write(0xFF);
@@ -570,10 +564,10 @@ char SDFileSystem::writeCommand(char cmd, unsigned int arg, unsigned int* resp)
         }
 
         //Handle R2 and R3/R7 response tokens
-        if (cmd == CMD13 && resp != NULL) {
+        if (cmd == CMD13 && resp != 0) {
             //Read the R2 response value
             *resp = m_Spiwrite(0xFF);//m_Spi.write(0xFF);
-        } else if ((cmd == CMD8 || cmd == CMD58) && resp != NULL) {
+        } else if ((cmd == CMD8 || cmd == CMD58) && resp != 0) {
             //Read the R3/R7 response value
             /* 
             *resp = (m_Spi.write(0xFF) << 24);
@@ -628,95 +622,42 @@ bool SDFileSystem::readData(char* buffer, int length)
             buffer[i + 1] = dataWord;
         }
     */
-	/*
-	while( !(pSPI[12] & (1<<1)) ); // wait until writeable
-	volatile void *SPI = pSPI;
-	int tmp=0;
-	asm volatile(
-	    ".syntax unified" "\n"
-	    "next%=:" "\n"
+   
+   // Fmanga code
+    while( !(pSPI[12] & (1<<1)) ); // wait until writeable
+    volatile void *SPI = pSPI;
+    int tmp=0;
+    asm volatile(
+        ".syntax unified" "\n"
+        "next%=:" "\n"
 
-	    "strh %[clock], [ %[SPI], 8 ]" "\n"
+        "strb %[clock], [ %[SPI], 8 ]" "\n"
 
-	    "readable%=:" "\n"
-	    "ldrh %[tmp], [ %[SPI], 12 ]" "\n"
-	    "lsls %[tmp], 29" "\n"
-	    "bpl readable%=" "\n"
+        "readable%=:" "\n"
+        "ldrh %[tmp], [ %[SPI], 12 ]" "\n"
+        "lsls %[tmp], 29" "\n"
+        "bpl readable%=" "\n"
 
-	    "ldrh %[tmp], [ %[SPI], 8 ]" "\n"
+        "ldrb %[tmp], [ %[SPI], 8 ]" "\n"
 
-	    "strb %[tmp], [ %[buffer], 1 ]" "\n"
-	    "lsrs %[tmp], 8" "\n"
-	    "strb %[tmp], [ %[buffer], 0 ]" "\n"
-	    
-	    "adds %[buffer], 2" "\n"
+        "strb %[tmp], [ %[buffer], 0 ]" "\n"
+        //"lsrs %[tmp], 8" "\n"
+        //"strb %[tmp], [ %[buffer], 0 ]" "\n"
 
-	    "subs %[remain], 2" "\n"
-	    "bne next%=" "\n"
-	    : // outputs
-	      [tmp]"+l"(tmp),
-	      [remain]"+l"(length),
-	      [buffer]"+l"(buffer)
-	    : // inputs
-	      [SPI]"l"(SPI),
-	      [clock]"l"(0xFFFF)
-	    : // clobbers
-	      "cc"
-	    );
-	     */
+        "adds %[buffer], 1" "\n"
 
-        //Read the CRC16 checksum for the data block
-        //crc = m_Spi.write(0xFFFF);
-
-        //Switch back to 8-bit frames
-        //m_Spi.format(8, 0);
-    //} else {
-        //Read the data into the buffer
-        /* 
-        for (int i = 0; i < length; i++)
-        {
-            while( !(pSPI[12] & (1<<1)) ); // wait until writeable
-            pSPI[8] = 0xFF; // write
-            while( !(pSPI[12] & (1<<2)) ); // wait until readable
-            buffer[i] = pSPI[8]; // read
-        }
-        */
-           //buffer[i] = m_Spiread();
-
-        while( !(pSPI[12] & (1<<1)) ); // wait until writeable
-        volatile void *SPI = pSPI;
-        int tmp=0;
-        asm volatile(
-            ".syntax unified" "\n"
-            "next%=:" "\n"
-
-            "strb %[clock], [ %[SPI], 8 ]" "\n"
-
-            "readable%=:" "\n"
-            "ldrh %[tmp], [ %[SPI], 12 ]" "\n"
-            "lsls %[tmp], 29" "\n"
-            "bpl readable%=" "\n"
-
-            "ldrb %[tmp], [ %[SPI], 8 ]" "\n"
-
-            "strb %[tmp], [ %[buffer], 0 ]" "\n"
-            //"lsrs %[tmp], 8" "\n"
-            //"strb %[tmp], [ %[buffer], 0 ]" "\n"
-
-            "adds %[buffer], 1" "\n"
-
-            "subs %[remain], 1" "\n"
-            "bne next%=" "\n"
-            : // outputs
-            [tmp]"+l"(tmp),
-            [remain]"+l"(length),
-            [buffer]"+l"(buffer)
-            : // inputs
-            [SPI]"l"(SPI),
-            [clock]"l"(0xFF)
-            : // clobbers
-            "cc"
-            );
+        "subs %[remain], 1" "\n"
+        "bne next%=" "\n"
+        : // outputs
+        [tmp]"+l"(tmp),
+        [remain]"+l"(length),
+        [buffer]"+l"(buffer)
+        : // inputs
+        [SPI]"l"(SPI),
+        [clock]"l"(0xFF)
+        : // clobbers
+        "cc"
+        );
           
 
         //Read the CRC16 checksum for the data block
@@ -999,12 +940,13 @@ inline bool SDFileSystem::writeBlocks(const char* buffer, unsigned int lba, unsi
     return false;
 }
 #endif
-
+/* 
 FATDirHandle *SDFileSystem::opendir(const char *name) {
     FATFS_DIR dir;
     FRESULT res = f_opendir(&dir, name);
     if (res != 0) {
-        return NULL;
+        return 0;
     }
     return new FATDirHandle(dir);
 }
+*/

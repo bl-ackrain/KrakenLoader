@@ -1,5 +1,5 @@
 #pragma once
-#include <mbed.h>
+#include <LPC11U6x.h>
 #include <cstdint>
 #include "SDFileSystem.h"
 
@@ -39,6 +39,19 @@ static constexpr uint8_t LCD_RES_PIN = 0;
 #define SET_MASK_P2 LPC_GPIO_PORT->MASK[2] = ~(0x7FFF8); //mask P2_3 ...P2_18
 #define CLR_MASK_P2 LPC_GPIO_PORT->MASK[2] = 0; // all on
 
+struct Font
+{
+    std::uint8_t* data;
+    std::uint8_t  width;
+    std::uint8_t  height;
+};
+
+enum class FontSize: std::uint8_t
+{
+    Small=0,
+    Big,
+};
+
 class LCD
 {
     static constexpr auto LCDBOOTCMDSIZE=34;
@@ -53,20 +66,23 @@ public:
     static void WriteCommand(uint16_t data);
     static void WriteData(uint16_t data);
     static void setWindow(uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2);
+    static void LoadFont(const char * path, FontSize fontsize);
+    static std::uint16_t RGB24toRGB16(std::uint32_t sourceColor);
 
     static void Clear(uint16_t color);
     static void drawPixel(int x, int y, uint16_t color);
     static void fillRectangle(int x, int y, int w, int h, uint16_t color);
     static void drawRectangle(int x, int y, int w, int h, uint16_t color);
-    static void drawBitmap16(int x, int y, uint16_t w, uint16_t h, const uint8_t bitmap[], const uint16_t palette[], uint8_t transparentColor, uint8_t replaceWith);
-    static void drawBitmap565File(FIL* file, int x, int y, uint16_t w, uint16_t h, size_t Xoffset=0);
+    static void drawBitmap16(int x, int y, uint16_t w, uint16_t h, const uint8_t bitmap[], const uint16_t palette[], uint8_t transparentColor, uint16_t replaceWith);
+    static void drawBitmap565File(FIL* file, int x, int y, uint16_t w, uint16_t h, std::size_t Xoffset=0);
     static void drawChar(int x, int y, uint8_t c);
     static void write(uint8_t c);
     static void print(const char txt[]);
     static void printNumber(uint32_t n);
-    static void printWraped(size_t margin, size_t width ,const char txt[]);
+    static void printWraped(std::size_t margin, std::size_t width ,const char txt[]);
     static uint8_t cursorX, cursorY;
-    static uint8_t *font;
+    static Font fonts[2];
+    static FontSize selectedFont;
     static uint16_t color;
 private:
     static constexpr const uint8_t m_lcdbootcmd[LCDBOOTCMDSIZE]={
@@ -74,6 +90,4 @@ private:
 
     static constexpr const uint16_t m_lcdbootdata[LCDBOOTCMDSIZE]={
         0x011C, 0x0100, 0x1038, 0x0808, 0x0000, 0x0001, 0x0000, 0x0000, 0x0000, 0x1000, 0x0000, 0x00DB, 0x0000, 0x0000, 0x00DB, 0x0000, 0x00AF, 0x0000, 0x00DB, 0x0000, 0x0003, 0x0203, 0x0A09, 0x0005, 0x1021, 0x0602, 0x0003, 0x0703, 0x0507, 0x1021, 0x0703, 0x2501, 0x0000, 0x1017};
-    static uint8_t m_fontWidth, m_fontHeight;
-
 };

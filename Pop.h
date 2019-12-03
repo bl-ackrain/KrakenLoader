@@ -1,5 +1,6 @@
 #pragma once
 #include "SDFileSystem.h"
+#include <cstdint>
 
 enum class PopTag {
     TAG_PADDING = 0,
@@ -32,8 +33,6 @@ enum class PopTag {
     TAG_CODE = 0X10008000,
 };
 
-
-
 class Pop
 {
 public:
@@ -44,13 +43,15 @@ public:
     static bool drawIcon24(const uint16_t x, const uint16_t y);
     static bool drawIcon36(const uint16_t x, const uint16_t y);
     static bool findTag(const PopTag targetTag, bool rewind=true);
-    static bool drawScreenShoot(const size_t number);
+    static bool drawScreenShoot(const std::size_t number);
     static bool drawBanner(uint16_t x, uint16_t y);
-    static SDFS::FIL *popFile;
+    static std::size_t seekToCode();
+    static FIL *popFile;
 
     static struct Tag{
         PopTag id;
         uint32_t lenght;
     } m_Tag;
-
+private:
+    static bool m_drawIcon(const uint16_t x, const uint16_t y, const uint16_t size);
 };

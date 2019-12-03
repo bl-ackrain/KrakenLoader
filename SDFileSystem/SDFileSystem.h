@@ -17,11 +17,12 @@
 #ifndef SD_FILE_SYSTEM_H
 #define SD_FILE_SYSTEM_H
 
-#include "mbed.h"
-//#include "FATFileSystem.h"
-#include "FATDirHandle.h"
+
 #include "ff.h"
 #include <stdint.h>
+
+using namespace SDFS;
+
 
 /** SDFileSystem class.
  *  Used for creating a virtual file system for accessing SD/MMC cards via SPI.
@@ -103,7 +104,7 @@ public:
      * @param cdtype The type of card detect switch.
      * @param hz The SPI bus frequency (defaults to 1MHz).
      */
-    SDFileSystem(PinName mosi, PinName miso, PinName sclk, PinName cs, const char* name, PinName cd = NC, SwitchType cdtype = SWITCH_NONE, int hz = 1000000);
+    SDFileSystem();//PinName mosi, PinName miso, PinName sclk, PinName cs, const char* name, PinName cd = NC, SwitchType cdtype = SWITCH_NONE, int hz = 1000000);
 
 
     //virtual ~SDFileSystem(){};
@@ -152,7 +153,7 @@ public:
 #endif
     virtual uint64_t disk_sectors();
 
-    FATDirHandle *opendir(const char *name);
+    //FATDirHandle *opendir(const char *name);
     
 private:
     //Commands
@@ -180,11 +181,11 @@ private:
     //Member variables
     //Timer m_Timer;
     //SPI m_Spi;
-    spi_t _spi;
-    DigitalOut m_Cs;
+    //spi_t _spi;
+    //DigitalOut m_Cs;
     // InterruptIn m_Cd;
     int m_CdAssert;
-    const int m_FREQ;
+    //const int m_FREQ;
     SDFileSystem::CardType m_CardType;
     //bool m_LargeFrames;
     //bool m_WriteValidation;
@@ -196,8 +197,8 @@ private:
     bool waitReady(int timeout);
     bool select();
     void deselect();
-    char commandTransaction(char cmd, unsigned int arg, unsigned int* resp = NULL);
-    char writeCommand(char cmd, unsigned int arg, unsigned int* resp = NULL);
+    char commandTransaction(char cmd, unsigned int arg, unsigned int* resp = 0);
+    char writeCommand(char cmd, unsigned int arg, unsigned int* resp = 0);
     bool readData(char* buffer, int length);
     bool readBlock(char* buffer, unsigned int lba);
     bool readBlocks(char* buffer, unsigned int lba, unsigned int count);

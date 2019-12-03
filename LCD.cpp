@@ -1,47 +1,25 @@
 #include "LCD.h"
-
-#include <pinmap.h>
-#include "font5x7.h"
+//#include "font5x7.h"
+#include "Loader.h"
 
 constexpr const  uint8_t LCD::m_lcdbootcmd[LCDBOOTCMDSIZE];
 constexpr const  uint16_t LCD::m_lcdbootdata[LCDBOOTCMDSIZE];
 
 uint8_t LCD::cursorX=0, LCD::cursorY=0;
-uint8_t *LCD::font=0;
+Font LCD::fonts[2];
+FontSize LCD::selectedFont=FontSize::Big;
 uint16_t LCD::color=0;
-uint8_t LCD::m_fontWidth=0, LCD::m_fontHeight=0;
+
+
 
 void LCD::SetupGPIO()
 {
-    /** control lines **/
     LPC_GPIO_PORT->DIR[LCD_CD_PORT] |= (1  << LCD_CD_PIN );
     LPC_GPIO_PORT->DIR[LCD_WR_PORT] |= (1  << LCD_WR_PIN );
     LPC_GPIO_PORT->DIR[LCD_RD_PORT] |= (1  << LCD_RD_PIN );
     LPC_GPIO_PORT->DIR[LCD_RES_PORT] |= (1  << LCD_RES_PIN );
-    /** data lines **/
+
     LPC_GPIO_PORT->DIR[2] |= (0xFFFF  << 3);  // P2_3...P2_18 as output
-
-    pin_mode(P2_3,PullNone); // turn off pull-up
-    pin_mode(P2_4,PullNone); // turn off pull-up
-    pin_mode(P2_5,PullNone); // turn off pull-up
-    pin_mode(P2_6,PullNone); // turn off pull-up
-
-    pin_mode(P2_7,PullNone); // turn off pull-up
-    pin_mode(P2_8,PullNone); // turn off pull-up
-    pin_mode(P2_9,PullNone); // turn off pull-up
-    pin_mode(P2_10,PullNone); // turn off pull-up
-
-    pin_mode(P2_11,PullNone); // turn off pull-up
-    pin_mode(P2_12,PullNone); // turn off pull-up
-    pin_mode(P2_13,PullNone); // turn off pull-up
-    pin_mode(P2_14,PullNone); // turn off pull-up
-
-    pin_mode(P2_15,PullNone); // turn off pull-up
-    pin_mode(P2_16,PullNone); // turn off pull-up
-    pin_mode(P2_17,PullNone); // turn off pull-up
-    pin_mode(P2_18,PullNone); // turn off pull-up
-
-
 }
 
 void LCD::SetupData(uint16_t data)
@@ -84,6 +62,12 @@ void LCD::setWindow(uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2) {
     WriteCommand(0x22);
 }
 
+void wait_ms(int t)
+{
+    for(int i=0;i<0xFFF;i++)
+        asm("nop");
+}
+
 void LCD::Init()
 {
     SetupGPIO();
@@ -103,20 +87,47 @@ void LCD::Init()
             wait_ms(10);
     }
     WriteCommand(0x22);
-    Clear(0x4a8a);
+    Clear(0x0);
 
     cursorX = 0;
     cursorY = 0;
-    font = const_cast<uint8_t*>(font5x7+3);
-    color = 0xFFFF;
-    m_fontWidth = font5x7[0];
-    m_fontHeight = font5x7[1];
 
+    color = 0xFFFF;
+
+    fonts[0].data = nullptr;
+    fonts[1].data = nullptr;
     //SETUP BACKLIGHT
-    pin_function(P2_2,0);//set pin function back to 0
+    LPC_IOCON->PIO2_2 = 0; //set pin function back to 0
+
     LPC_GPIO_PORT->DIR[2] |= (1  << 2 );
     LPC_GPIO_PORT->SET[2] = 1 << 2; // full background light, smaller file size
-    wait_ms(200);
+    //wait_ms(200);
+}
+
+void LCD::LoadFont(const char * path, FontSize fontsize)
+{
+    if(fonts[static_cast<std::uint8_t>(fontsize)].data!=nullptr)
+    {
+        delete fonts[static_cast<std::uint8_t>(fontsize)].data;
+        fonts[static_cast<std::uint8_t>(fontsize)].data = nullptr;
+    }
+
+    FIL FontFile;
+    FRESULT res=f_open(&FontFile, path, FA_READ);
+    if(res!=FR_OK)
+    {
+        Loader::errorPopup("");
+    }
+
+    fonts[static_cast<std::uint8_t>(fontsize)].data = new std::uint8_t[FontFile.fsize];
+    std::size_t count=0;
+    f_read(&FontFile, fonts[static_cast<std::uint8_t>(fontsize)].data, FontFile.fsize, &count);
+    f_close(&FontFile);
+
+    fonts[static_cast<std::uint8_t>(fontsize)].width = fonts[static_cast<std::uint8_t>(fontsize)].data[0];
+    fonts[static_cast<std::uint8_t>(fontsize)].height = fonts[static_cast<std::uint8_t>(fontsize)].data[1];
+
+    fonts[static_cast<std::uint8_t>(fontsize)].data+= 3;
 }
 
 void LCD::Clear(uint16_t color)
@@ -153,6 +164,7 @@ void LCD::drawPixel(int x, int y, uint16_t color)
 
 void LCD::fillRectangle(int x, int y, int w, int h, uint16_t color)
 {
+    /*
 	if(x > WIDTH)
         return;
 	if(y > HEIGHT)
@@ -165,7 +177,7 @@ void LCD::fillRectangle(int x, int y, int w, int h, uint16_t color)
         x=0;
 	if(y < 0)
         y=0;
-
+*/
     setWindow(y, x, y+h-1, x+w-1);
 
     SetupData(color);
@@ -188,19 +200,19 @@ void LCD::drawRectangle(int x, int y, int w, int h, uint16_t color)
 
 }
 
-void LCD::drawBitmap16(int x, int y, uint16_t w, uint16_t h, const uint8_t bitmap[], const uint16_t palette[], uint8_t transparentColor, uint8_t replaceWith)
+void LCD::drawBitmap16(int x, int y, uint16_t w, uint16_t h, const uint8_t bitmap[], const uint16_t palette[], uint8_t transparentColor, uint16_t replaceWith)
 {
     for(auto i=0;i<h;i++)
         for(auto j=0;j<w>>1;j++)
         {
             uint8_t d=bitmap[(i*(w>>1))+j];
 
-            drawPixel(x+j*2, y+i, palette[((d>>4)!=transparentColor)?d>>4:replaceWith]);
-            drawPixel(x+1+j*2, y+i, palette[((d&0x0F)!=transparentColor)?d&0x0F:replaceWith]);
+            drawPixel(x+j*2, y+i, ((d>>4)!=transparentColor)?palette[d>>4]:replaceWith);
+            drawPixel(x+1+j*2, y+i, ((d&0x0F)!=transparentColor)?palette[d&0x0F]:replaceWith);
         }
 }
 
-void LCD::drawBitmap565File(FIL* file, int x, int y, uint16_t w, uint16_t h, size_t Xoffset)
+void LCD::drawBitmap565File(FIL* file, int x, int y, uint16_t w, uint16_t h, std::size_t Xoffset)
 {
 
     uint16_t buff[w];
@@ -208,9 +220,9 @@ void LCD::drawBitmap565File(FIL* file, int x, int y, uint16_t w, uint16_t h, siz
 
     SET_MASK_P2;
     CLR_CS_SET_CD_RD_WR;
-    for(size_t j=0;j<h;j++)
+    for(std::size_t j=0;j<h;j++)
     {
-        size_t count=0;
+        std::size_t count=0;
         f_read(file, buff, w*2, &count);
         if(Xoffset)
             f_lseek(file, file->fptr + Xoffset*2);
@@ -240,14 +252,14 @@ void LCD::drawBitmap565File(FIL* file, int x, int y, uint16_t w, uint16_t h, siz
 
 void LCD::drawChar(int x, int y, uint8_t c)
 {
-	for(auto i=0; i < m_fontWidth; i++ ) {
+	for(auto i=0; i < fonts[static_cast<std::uint8_t>(selectedFont)].width; i++ ) {
         uint8_t line;
-        if(i == m_fontWidth)
+        if(i == fonts[static_cast<std::uint8_t>(selectedFont)].width)
             line = 0x0;
         else
-            line = *(font+((c-32)*m_fontWidth)+i);
+            line = *(fonts[static_cast<std::uint8_t>(selectedFont)].data+(c*fonts[static_cast<std::uint8_t>(selectedFont)].width)+i);
                 
-        for(auto j=0; j < m_fontHeight; j++) {
+        for(auto j=0; j < fonts[static_cast<std::uint8_t>(selectedFont)].height; j++) {
             if(line & 0x1)
             {
                 auto xx=x+i;
@@ -264,15 +276,15 @@ void LCD::drawChar(int x, int y, uint8_t c)
 void LCD::write(uint8_t c)
 {
     if (c == '\n') {
-    cursorY += m_fontHeight+1;
-    cursorX = 0;
+        cursorY += fonts[static_cast<std::uint8_t>(selectedFont)].height+1;
+        cursorX = 0;
     } else if (c == '\r') {
         // skip em
     } else {
         drawChar(cursorX, cursorY, c);
-        cursorX += m_fontWidth+1;
-        if ((cursorX > (WIDTH - m_fontWidth-1))) {
-            cursorY +=  m_fontHeight+1;
+        cursorX += fonts[static_cast<std::uint8_t>(selectedFont)].width+1;
+        if ((cursorX > (WIDTH - fonts[static_cast<std::uint8_t>(selectedFont)].width-1))) {
+            cursorY +=  fonts[static_cast<std::uint8_t>(selectedFont)].height+1;
             cursorX = 0;
         }
     }
@@ -284,22 +296,22 @@ void LCD::print(const char txt[])
         write(*txt++);
 }
 
-void LCD::printWraped(size_t margin, size_t width ,const char txt[])
+void LCD::printWraped(std::size_t margin, std::size_t width ,const char txt[])
 {
     cursorX = margin;
     while (*txt)
     {
         char c=*txt++;
         if (c == '\n') {
-        cursorY += m_fontHeight+1;
+        cursorY += fonts[static_cast<std::uint8_t>(selectedFont)].height+1;
         cursorX = margin;
         } else if (c == '\r') {
             // skip em
         } else {
             drawChar(cursorX, cursorY, c);
-            cursorX += m_fontWidth+1;
-            if ((cursorX > (width+margin - m_fontWidth-1))) {
-                cursorY +=  m_fontHeight+1;
+            cursorX += fonts[static_cast<std::uint8_t>(selectedFont)].width+1;
+            if ((cursorX > (width+margin - fonts[static_cast<std::uint8_t>(selectedFont)].width-1))) {
+                cursorY +=  fonts[static_cast<std::uint8_t>(selectedFont)].height+1;
                 cursorX = margin;
             }
         }
@@ -326,3 +338,16 @@ void LCD::printNumber(uint32_t n)
       '0' + buf[i - 1] :
       'A' + buf[i - 1] - 10));
 } 
+
+std::uint16_t LCD::RGB24toRGB16(std::uint32_t sourceColor)
+{
+	std::uint8_t red = (sourceColor >> 16) & 0xFF;
+	std::uint8_t green = (sourceColor >> 8) & 0xFF;
+	std::uint8_t blue =  sourceColor & 0xFF;
+
+    uint16_t color = blue>>3;
+    color |= ((green >> 2) << 5);
+    color |= ((red >> 3) << 11);
+
+	return color;
+}

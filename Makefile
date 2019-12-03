@@ -21,7 +21,7 @@ vpath %.h .
 SRC_DIR := ./
 OBJ_DIR := ./build/obj
 BIN_DIR := ./build/bin
-BPROJECT := ./build/bin/BLACKRAINLOADER_v101.DER
+BPROJECT := ./build/bin/KRAKENLOADER_v102.DER
 
 POKITO_EMU_dir := /home/ramzi/PokittoEmu
 
@@ -36,6 +36,8 @@ CXX_OBJ := $(patsubst %.cpp,$(OBJ_DIR)/%.o,$(CXX_SRC))
 
 
 INCLUDE_PATHS += -I./.
+INCLUDE_PATHS += -I./lpc_chip_11u6x/inc
+INCLUDE_PATHS += -I./lpc_chip_11u6x/inc/usbd
 INCLUDE_PATHS += -I./SDFileSystem
 INCLUDE_PATHS += -I./SDFileSystem/FATFileSystem
 INCLUDE_PATHS += -I./SDFileSystem/FATFileSystem/ChaN
@@ -54,7 +56,7 @@ INCLUDE_PATHS += -I./mbed-pokitto/targets/hal
 INCLUDE_PATHS += -I./mbed-pokitto/targets/hal/TARGET_NXP
 INCLUDE_PATHS += -I./mbed-pokitto/targets/hal/TARGET_NXP/TARGET_LPC11U6X
 
-LINKER_SCRIPT := loader_test.ld
+LINKER_SCRIPT := loader_v102.ld
 
 # Objects and Paths
 ###############################################################################
@@ -69,7 +71,7 @@ TOOLCHAIN:=/opt/em_armgcc/bin
 #arduino Toolchain
 #TOOLCHAIN:=/opt/gcc-arm-none-eabi-8-2018-q4/bin
 
-LPCRC := ../build/lpcrc
+LPCRC := ../PokittoLib/build/lpcrc
 
 
 AS      = $(TOOLCHAIN)/arm-none-eabi-gcc -x assembler-with-cpp -c -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -fmessage-length=0 -fno-exceptions -fno-builtin -ffunction-sections -fdata-sections -funsigned-char -MMD -fno-delete-null-pointer-checks -fomit-frame-pointer -Os -g1 -DMBED_RTOS_SINGLE_THREAD -mcpu=cortex-m0plus -mthumb
@@ -80,8 +82,8 @@ ELF2BIN = $(TOOLCHAIN)/arm-none-eabi-objcopy
 PREPROC = $(TOOLCHAIN)/arm-none-eabi-cpp 
 
 
-C_FLAGS := -Os -c -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -fmessage-length=0 -fno-exceptions -fno-builtin -ffunction-sections -fdata-sections -funsigned-char -MMD -fno-delete-null-pointer-checks -fomit-frame-pointer -g0 -DMBED_RTOS_SINGLE_THREAD -mcpu=cortex-m0plus -mthumb
-C_FLAGS +=-DMBED_RTOS_SINGLE_THREAD  -DTARGET_LPC11U68 -D__MBED__=1 -DDEVICE_I2CSLAVE=1 -DTARGET_LIKE_MBED -DTARGET_NXP -D__MBED_CMSIS_RTOS_CM -DDEVICE_RTC=1 -DTOOLCHAIN_object -D__CMSIS_RTOS -DTOOLCHAIN_GCC -DTARGET_CORTEX_M -DTARGET_M0P -DTARGET_UVISOR_UNSUPPORTED -DDEVICE_SERIAL=1 -DDEVICE_INTERRUPTIN=1 -DTARGET_LPCTarget -DTARGET_CORTEX -DDEVICE_I2C=1 -D__CORTEX_M0PLUS -DTARGET_FF_ARDUINO -DTARGET_RELEASE -DMBED_BUILD_TIMESTAMP=1507563655.72 -DARM_MATH_CM0PLUS -DTARGET_LPC11U6X -DDEVICE_SLEEP=1 -DTOOLCHAIN_GCC_ARM -DDEVICE_SPI=1 -DDEVICE_ANALOGIN=1 -DDEVICE_PWMOUT=1 -DTARGET_LIKE_CORTEX_M0 -DPROJ_HIRES=0 -DPROJ_STARTUPLOGO=0 -DPROJ_GAMEBUINO=0 -DPROJ_GBSOUND=0 -DPROJ_STREAMING_MUSIC=0 -DPROJ_ENABLE_SYNTH=0 -DPROJ_ENABLE_SOUND=0 -DBASE_ADDRESS=131072 -DBYPASS_SYSTEMINIT=1 -DMINILOADHIGH -DBUBBLESORT 
+C_FLAGS :=-Os -c -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -fmessage-length=0 -fno-exceptions -fno-builtin -ffunction-sections -fdata-sections -funsigned-char -MMD -fno-delete-null-pointer-checks -fomit-frame-pointer -g0 -DMBED_RTOS_SINGLE_THREAD -mcpu=cortex-m0plus -mthumb
+C_FLAGS += -DCORE_M0PLUS -DMBED_RTOS_SINGLE_THREAD  -DTARGET_LPC11U68 -D__MBED__=1 -DDEVICE_I2CSLAVE=1 -DTARGET_LIKE_MBED -DTARGET_NXP -D__MBED_CMSIS_RTOS_CM -DDEVICE_RTC=1 -DTOOLCHAIN_object -D__CMSIS_RTOS -DTOOLCHAIN_GCC -DTARGET_CORTEX_M -DTARGET_M0P -DTARGET_UVISOR_UNSUPPORTED -DDEVICE_SERIAL=1 -DDEVICE_INTERRUPTIN=1 -DTARGET_LPCTarget -DTARGET_CORTEX -DDEVICE_I2C=1 -D__CORTEX_M0PLUS -DTARGET_FF_ARDUINO -DTARGET_RELEASE -DMBED_BUILD_TIMESTAMP=1507563655.72 -DARM_MATH_CM0PLUS -DTARGET_LPC11U6X -DDEVICE_SLEEP=1 -DTOOLCHAIN_GCC_ARM -DDEVICE_SPI=1 -DDEVICE_ANALOGIN=1 -DDEVICE_PWMOUT=1 -DTARGET_LIKE_CORTEX_M0 -DPROJ_HIRES=0 -DPROJ_STARTUPLOGO=0 -DPROJ_GAMEBUINO=0 -DPROJ_GBSOUND=0 -DPROJ_STREAMING_MUSIC=0 -DPROJ_ENABLE_SYNTH=0 -DPROJ_ENABLE_SOUND=0 -DBASE_ADDRESS=131072 -DBYPASS_SYSTEMINIT=1 -DMINILOADHIGH -DBUBBLESORT 
 
 #CXX_FLAGS := -Os -fno-rtti -Wvla -c -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -fmessage-length=0 -fno-exceptions -fno-builtin -ffunction-sections -fdata-sections -funsigned-char -MMD -fno-delete-null-pointer-checks -fomit-frame-pointer  -g0 -DMBED_RTOS_SINGLE_THREAD -mcpu=cortex-m0plus -mthumb -fno-use-cxa-atexit
 CXX_FLAGS:= -mcpu=cortex-m0plus -mthumb -Os -c -fno-exceptions -fno-rtti -std=gnu++11 -Wextra -Wall -fomit-frame-pointer -fdata-sections -ffunction-sections -g1 -funsigned-char -Wno-unused-parameter -Wno-missing-field-initializers -fmessage-length=0 -fno-builtin -fno-delete-null-pointer-checks -fno-use-cxa-atexit
@@ -124,13 +126,11 @@ $(BPROJECT).bin: $(BPROJECT).elf
 	+@echo "===== bin file ready to flash: $@ =====" 
 
 run: $(BPROJECT).bin
-	$(POKITO_EMU_dir)/PokittoEmu.exe -I $(POKITO_EMU_dir)/sd.img $(BPROJECT).bin
+	$(POKITO_EMU_dir)/PokittoEmu.exe -e 0x39000 -I $(POKITO_EMU_dir)/gamedisk13.img $(BPROJECT).bin
 
-release: $(C_OBJ) $(CXX_OBJ) 
-	+@echo "link: $(notdir $@)"
-	@$(LD) $(LD_FLAGS) -Wl,-script=loader101.ld $(C_OBJ) $(CXX_OBJ) $(LD_SYS_LIBS) --output $(BPROJECT)_release.elf
-	@$(ELF2BIN) -O binary $(BPROJECT)_release.elf $(BPROJECT)
-	@$(LPCRC) $(BPROJECT)
+release: $(BPROJECT).elf
+	@$(ELF2BIN) -O binary $(BPROJECT).elf $(BIN_DIR)/LOA.DER
+	@$(LPCRC) $(BIN_DIR)/LOA.DER
 
 analyse: $(BPROJECT).elf
 	+@echo "analyse: $(notdir $@)"

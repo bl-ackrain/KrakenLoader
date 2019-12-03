@@ -1,20 +1,21 @@
 #include "Buttons.h"
+#include <LPC11U6x.h>
+
+inline bool aBtn(){ return *((volatile char*)(0xA0000000 + 1*0x20 + 9)); };
+inline bool bBtn(){ return *((volatile char*)(0xA0000000 + 1*0x20 + 4)); };
+inline bool cBtn(){ return *((volatile char*)(0xA0000000 + 1*0x20 + 10)); };
+inline bool upBtn(){ return *((volatile char*)(0xA0000000 + 1*0x20 + 13)); };
+inline bool downBtn(){ return *((volatile char*)(0xA0000000 + 1*0x20 + 3)); };
+inline bool leftBtn(){ return *((volatile char*)(0xA0000000 + 1*0x20 + 25)); };
+inline bool rightBtn(){ return *((volatile char*)(0xA0000000 + 1*0x20 + 7)); };
 
 
-DigitalIn Buttons::ABtn(P1_9);
-DigitalIn Buttons::BBtn(P1_4);
-DigitalIn Buttons::CBtn(P1_10);
-DigitalIn Buttons::UpBtn(P1_13);
-DigitalIn Buttons::DownBtn(P1_3);
-DigitalIn Buttons::LeftBtn(P1_25);
-DigitalIn Buttons::RightBtn(P1_7);
-
-uint32_t Buttons::states[Buttons::NUM_BTN];
+std::uint32_t Buttons::states[Buttons::NUM_BTN];
 
 void Buttons::Init()
 {
     //enable GPIO AHB clock
-    LPC_SYSCON->SYSAHBCLKCTRL |= ((1 << 19) | (1 << 16) | (1 << 7));
+    LPC_SYSCON->SYSAHBCLKCTRL |= ((1 << 19) | (1 << 16) | (1 << 7) | (1 << 30));
 
     //Disable pin interrupts
     LPC_SYSCON->STARTERP0 = 0;
@@ -26,17 +27,17 @@ void Buttons::Init()
     LPC_SYSCON->PINTSEL[5] = 0;
     LPC_SYSCON->PINTSEL[6] = 0;
 
-    NVIC->ICER[0] = (1 << ((uint32_t)(0) & 0x1F));
-    NVIC->ICER[0] = (1 << ((uint32_t)(1) & 0x1F));
-    NVIC->ICER[0] = (1 << ((uint32_t)(2) & 0x1F));
-    NVIC->ICER[0] = (1 << ((uint32_t)(3) & 0x1F));
-    NVIC->ICER[0] = (1 << ((uint32_t)(4) & 0x1F));
-    NVIC->ICER[0] = (1 << ((uint32_t)(5) & 0x1F));
-    NVIC->ICER[0] = (1 << ((uint32_t)(6) & 0x1F));
+    NVIC->ICER[0] = (1 << ((std::uint32_t)(0) & 0x1F));
+    NVIC->ICER[0] = (1 << ((std::uint32_t)(1) & 0x1F));
+    NVIC->ICER[0] = (1 << ((std::uint32_t)(2) & 0x1F));
+    NVIC->ICER[0] = (1 << ((std::uint32_t)(3) & 0x1F));
+    NVIC->ICER[0] = (1 << ((std::uint32_t)(4) & 0x1F));
+    NVIC->ICER[0] = (1 << ((std::uint32_t)(5) & 0x1F));
+    NVIC->ICER[0] = (1 << ((std::uint32_t)(6) & 0x1F));
 
     // Clear interrupts
-    uint32_t* a;
-    a = (uint32_t*)0xA000407F;
+    std::uint32_t* a;
+    a = (std::uint32_t*)0xA000407F;
     *a = 0;
     //if (!(LPC_GPIO_X->ISEL & ch_bit))
     LPC_PINT->IST = 0x0;
@@ -47,18 +48,18 @@ void Buttons::Init()
 
 void Buttons::update()
 {
-    uint16_t s[NUM_BTN];
+    bool s[NUM_BTN];
 
-    s[BTN_LEFT] = LeftBtn;
-    s[BTN_UP] = UpBtn;
-    s[BTN_RIGHT] = RightBtn;
-    s[BTN_DOWN] = DownBtn;
-    s[BTN_A] = ABtn;
-    s[BTN_B] = BBtn;
-    s[BTN_C] = CBtn;
+    s[BTN_LEFT] = leftBtn();
+    s[BTN_UP] = upBtn();
+    s[BTN_RIGHT] = rightBtn();
+    s[BTN_DOWN] = downBtn();
+    s[BTN_A] = aBtn();
+    s[BTN_B] = bBtn();
+    s[BTN_C] = cBtn();
 
-    for (uint16_t thisButton = 0; thisButton < NUM_BTN; thisButton++) {
-        if (s[thisButton]==1) { //if button pressed
+    for (std::uint16_t thisButton = 0; thisButton < NUM_BTN; thisButton++) {
+        if (s[thisButton]) { //if button pressed
             states[thisButton]++; //increase button hold time
         } else {
             if (states[thisButton] == 0)//button idle
@@ -71,28 +72,28 @@ void Buttons::update()
     }
 }
 
-bool Buttons::pressed(uint8_t button) {
+bool Buttons::pressed(std::uint8_t button) {
     if (states[button] == 1)
         return true;
     else
         return false;
 }
 
-bool Buttons::released(uint8_t button) {
+bool Buttons::released(std::uint8_t button) {
     if (states[button] == 0xFFFFFF)
         return true;
     else
         return false;
 }
 
-bool Buttons::held(uint8_t button, uint32_t time){
+bool Buttons::held(std::uint8_t button, std::uint32_t time){
     if(states[button] == (time+1))
         return true;
     else
         return false;
 }
 
-bool Buttons::repeat(uint8_t button, uint32_t period) {
+bool Buttons::repeat(std::uint8_t button, std::uint32_t period) {
     if (period <= 1) {
         if ((states[button] != 0xFFFFFF) && (states[button]))
             return true;
@@ -103,7 +104,7 @@ bool Buttons::repeat(uint8_t button, uint32_t period) {
     return false;
 }
 
-uint32_t Buttons::timeHeld(uint8_t button){
+std::uint32_t Buttons::timeHeld(std::uint8_t button){
     if(states[button] != 0xFFFFFF)
         return states[button];
     else
