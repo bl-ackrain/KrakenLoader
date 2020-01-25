@@ -1,11 +1,12 @@
 #include "Loader.h"
 #include "LCD.h"
-#include "Palette.h"
+//#include "Palette.h"
 #include <cctype>
 #include <cstring>
-#include "Icons.h"
+//#include "Icons.h"
 #include "Pop.h"
 #include "iap.h"
+#include "Battery.h"
 
 bool Loader::m_redraw=true;
 SDFileSystem *Loader::sdFs;
@@ -25,23 +26,26 @@ uint8_t Loader::m_pPrev=0;
 Loader::State Loader::m_state = Loader::State::Browse;
 Loader::State Loader::m_oldstate = Loader::State::Browse;
 
+time_t Loader::m_seconds;
+
 const uint8_t Loader::gbDefaultPal[16]={0xF0, 0xBD, 0x07, 0x00, 0xA8, 0x6B, 0x05, 0x00, 0x60, 0x18, 0x03, 0x00, 0x18, 0xC6, 0x00, 0x00};
 
-std::uint8_t* Loader::m_icons[4];
 Theme Loader::theme;
+Settings Loader::settings;
 
 void Loader::Init()
 {
-    // try to fix sound problem
+    //fix sound problem
     LPC_GPIO_PORT->DIR[1] |= (1 << 17);
     LPC_GPIO_PORT->CLR[1] = (1 << 17);
 
-    LPC_IOCON->PIO0_0 &= ~(1); //set pin function back to 0
+    LPC_IOCON->PIO0_0 &= ~(0x3); //set reset pin function back to 0 (RESET)
 
     bool bootsplash=false;
-    settings.Init();
+
     LCD::Init();
     Buttons::Init();
+    Battery::init();
 
     char* arg = reinterpret_cast<char*>(0x20000000);
 
@@ -56,12 +60,8 @@ void Loader::Init()
         {};
     }
 
-    LCD::LoadFont(".loader/5x7.font", FontSize::Big);
-    LCD::LoadFont(".loader/3x5.font", FontSize::Small);
-    theme.loadTheme(".loader/Theme2");
-
-    if(m_loadIcons())
-        errorPopup("Loading Icons");
+    settings.Init();
+    LCD::LoadFont("kraken/5x7.font", FontSize::Big);
 
     m_redraw=true;
     memset(m_curDir,0,_MAX_LFN);
@@ -91,10 +91,17 @@ void Loader::Init()
             errorPopup("Loading File Failed");
     }
 
+
     if(m_drawBootSplash())
     {
+        LCD::fillRectangle(0, LCD::HEIGHT-3, LCD::WIDTH, 3, 0x0000);
         bootsplash=true;
     }
+
+    LCD::LoadFont("kraken/3x5.font", FontSize::Small);
+    if(!theme.loadTheme(settings.theme))
+        errorPopup("Loading theme");
+
     
     m_itemcount=m_fileCount();
     m_beginitem=0;
@@ -106,10 +113,15 @@ void Loader::Init()
     else if(settings.viewmode==Settings::ViewMode::List)
         m_state=State::Browse;
 
+
+
     if(bootsplash)
-    for(std::size_t i=0;i<0x7FFFFF;i++)
-        asm("nop");
-        //wait_ms(1300);
+    {
+        for(std::size_t i=0;i<0x17FF;i++)
+            LCD::fillRectangle(0, LCD::HEIGHT-3, (LCD::WIDTH*i)/0x17FF, 3, 0xFFFF);
+    }
+            
+
 }
 
 void Loader::run()
@@ -124,9 +136,12 @@ void Loader::run()
 void Loader::update()
 {
     time_t tmp_seconds = (time_t)LPC_RTC->COUNT;
-    if(m_seconds !=tmp_seconds)
-        drawClock();
-
+    if(tmp_seconds!=m_seconds)
+    {
+        if((tmp_seconds%5)==0)
+            drawClock();
+    }
+        
     Buttons::update();
     if(m_state==State::Settings)
     {
@@ -196,7 +211,6 @@ void Loader::update()
                         if(!Pop::drawScreenShoot(num))
                             num--;
                     }
-
                     if(Buttons::pressed(Buttons::BTN_LEFT) && num>0 )
                     {
                         num--;
@@ -221,7 +235,7 @@ void Loader::update()
     {
         if(m_state==State::Coverflow)
             m_nextItem();
-        if(m_state==State::Browse && m_itemcount > 5)
+        else if(m_state==State::Browse && m_itemcount > 5)
             m_nextPage();
         return;
     }
@@ -230,7 +244,7 @@ void Loader::update()
     {
         if(m_state==State::Coverflow)
             m_prevItem();
-        if(m_state==State::Browse && m_itemcount > 5 )
+        else if(m_state==State::Browse && m_itemcount > 5 )
             m_prevPage();
         return;
     }
@@ -239,7 +253,7 @@ void Loader::update()
     {
         if(m_state==State::Coverflow)
             m_prevPage();
-        if(m_state==State::Browse)
+        else if(m_state==State::Browse)
             m_prevItem();
        return ;
     }
@@ -259,6 +273,7 @@ void Loader::update()
             return;
         if(m_Items[m_selecteditem].Type==ItemType::Folder)
         {
+            drawBottomBar(true);
             strcpy(m_curDir, m_Items[m_selecteditem].fullPath);
             m_itemcount=m_fileCount();
 
@@ -282,6 +297,7 @@ void Loader::update()
             return;
         char *slash=strrchr(m_curDir,'/');
         *slash=0;
+        drawBottomBar(true);
         m_itemcount=m_fileCount();
 
         m_pullPrev();
@@ -293,10 +309,11 @@ void Loader::update()
     {
         if(m_curDir[0])
             return;
-        drawClock();
         settings.Init();
         m_oldstate=m_state;
         m_state=State::Settings;
+        settings.draw();
+        drawClock();
     }
 
 }
@@ -350,23 +367,22 @@ void Loader::draw()
 
 void Loader::drawTopBar()
 {
-    LCD::selectedFont=FontSize::Small;
     std::size_t len=strlen(m_curDir);
-    LCD::fillRectangle(14, 1, LCD::WIDTH-49, 8, theme.BackgroundTop);
-    std::size_t w= 12+(len+1)*(LCD::fonts[static_cast<std::uint8_t>(FontSize::Small)].width+1);
-    if(w >LCD::WIDTH-35)
-        w=LCD::WIDTH-35;
-    drawRoundRect(2, 1, w, 8, theme.Boxes);
-    LCD::fillRectangle(4, 8, w-4, 1, theme.Boxes+0x2965);
-    //LCD::drawBitmap16(6, 2, 8, 8, Icons::SD, popPalette, PINK, theme.Boxes);
+
+    drawRoundRect(2, -2, LCD::WIDTH-4, 12, theme.Boxes);
+    LCD::fillRectangle(4, 10, LCD::WIDTH-8, 1, theme.Boxes+0x2965);
+    LCD::selectedFont=FontSize::Big;
+    drawClock();
+
+    LCD::selectedFont=FontSize::Small;
     LCD::cursorX=8;
-    LCD::cursorY=2;
+    LCD::cursorY=3;
     LCD::color=theme.Text;
 
-    if(len > 40)
+    if(len > 32)
     {
         LCD::print("..");
-        LCD::print(m_curDir+len-40);
+        LCD::print(m_curDir+len-32);
     }  
     else
         LCD::print(m_curDir);
@@ -392,21 +408,30 @@ void Loader::drawScrollBar()
     }
 }
 
-void Loader::drawBottomBar()
+void Loader::drawBottomBar(bool loading)
 {
     LCD::selectedFont=FontSize::Small;
     drawRoundRect(2, LCD::HEIGHT-9, LCD::WIDTH-4, 11, theme.Boxes);
     LCD::fillRectangle(4, LCD::HEIGHT-9, LCD::WIDTH-8, 1, theme.Boxes+0x2965);
-    LCD::cursorX=LCD::WIDTH-(m_itemcount>10?50:40);
-    LCD::cursorY=LCD::HEIGHT-7;
+    
     LCD::color=theme.Text;
+    LCD::cursorY=LCD::HEIGHT-7;
+    if(loading)
+    {
+        LCD::cursorX=8;
+        LCD::print("Loading...");
+        return;
+    }
+
+    LCD::cursorX=LCD::WIDTH-(m_itemcount>10?50:40);
+
     LCD::print("\x11 ");
     LCD::printNumber((m_itemcount > 0)?m_beginitem+m_selecteditem+1:0);
     LCD::print("/");
     LCD::printNumber(m_itemcount);
     LCD::print(" \x10");
 
-    LCD::cursorX=8+8;
+    LCD::cursorX=16;
     LCD::print("Ok");
     char button;
     if(!m_curDir[0])
@@ -431,14 +456,16 @@ void Loader::drawBottomBar()
 
 void Loader::drawClock()
 {
-    LCD::selectedFont=FontSize::Small;
-    drawRoundRect(LCD::WIDTH-32, 1, 30, 7, theme.Boxes);
-    LCD::fillRectangle(LCD::WIDTH-30, 7, 30-4, 1, theme.Boxes+0x2965);
-    m_seconds = (time_t)LPC_RTC->COUNT;
+    //drawRoundRect(LCD::WIDTH-35-30, 1, 33+30, 10, theme.Boxes);
+    //LCD::fillRectangle(LCD::WIDTH-33-30, 10, 33+30-4, 1, theme.Boxes+0x2965);
+
+    LCD::fillRectangle(LCD::WIDTH-35-30+1, 2, 33+30-2, 7, theme.Boxes);
+
+    m_seconds = static_cast<time_t>(LPC_RTC->COUNT);
     auto hours = (m_seconds/3600)%24;
     auto mins = (m_seconds/60)%60;
 
-    LCD::cursorX=LCD::WIDTH-27;
+    LCD::cursorX=LCD::WIDTH-33;
     LCD::cursorY=2;
     LCD::color=theme.Text;
 
@@ -449,7 +476,13 @@ void Loader::drawClock()
     if(mins < 10)
         LCD::write('0');
     LCD::printNumber(mins);
-    LCD::selectedFont=FontSize::Big;
+
+    uint8_t bat=Battery::getPercentage();
+    LCD::cursorX=bat<100?(LCD::WIDTH-33-26):(LCD::WIDTH-33-30);
+    LCD::cursorY=2;
+    LCD::printNumber(bat);
+    LCD::write('\x07');
+
 }
 
 std::size_t Loader::m_fileCount()
@@ -487,23 +520,36 @@ std::size_t Loader::m_fileCount()
         if(res!=FR_OK || finfo.fname[0]==0)
             break;
         
-        if(finfo.lfname[0]!=0)
-            fileName=finfo.lfname;
-        else
-            fileName=finfo.fname;
+        fileName=finfo.lfname[0]!=0?finfo.lfname:finfo.fname;
 
         if(finfo.fattrib & AM_DIR)
         {
-            if(m_scanFolderForGames(m_curDir, fileName))
-                m_indexs[c++]=idx;
+            if(strcmp(fileName,"kraken")!=0 && fileName[0]!='.')
+            {
+                if(m_scanFolderForGames(m_curDir, fileName))
+                    m_indexs[c++]=idx;
+            }
         }
         else
         {
             char extension[4];
             m_getExtension(extension,fileName);
 
-            if(strcmp(extension,"bin")==0 || strcmp(extension,"pop")==0 || strcmp(extension,"gb")==0)
+            if(strcmp(extension,"pop")==0 || strcmp(extension,"gb")==0)
                 m_indexs[c++]=idx;
+
+            else if(strcmp(extension,"bin")==0)
+            {
+                char fPath[_MAX_LFN+1];
+                fPath[0]=0;
+                strcat(fPath, m_curDir);
+                strcat(fPath, "/");
+                strcat(fPath, fileName);
+
+                if(m_binIsGame(fPath))
+                    m_indexs[c++]=idx;
+            }
+            
         }
         idx++;
     }
@@ -639,7 +685,7 @@ void Loader::drawItem(std::size_t num)
         Pop::drawIcon24(5, 15+num*30);
     }
     else
-        LCD::drawBitmap16(5, 15+num*30, 24, 24,  m_icons[static_cast<int>(m_Items[num].Type)], popPalette, Colors::PINK, (m_selecteditem==num)?theme.Selected:theme.Boxes);
+        LCD::drawBitmap565(5, 15+num*30, 24, 24, theme.icons[static_cast<int>(m_Items[num].Type)]);
 }
 
 void Loader::drawAllItems()
@@ -673,9 +719,9 @@ void Loader::drawItemCoverflow(std::size_t num)
     if(m_selecteditem==num)
     {
         //clear name and author
-        LCD::fillRectangle(0, 92, LCD::WIDTH, 24, theme.BackgroundTop);
+        LCD::fillRectangle(0, 92+3, LCD::WIDTH, 24, theme.BackgroundTop);
 
-        LCD::cursorY=95;
+        LCD::cursorY=95+3;
         LCD::color=theme.Title;
 
         if(m_Items[num].Type==ItemType::Pop)
@@ -696,7 +742,7 @@ void Loader::drawItemCoverflow(std::size_t num)
             LCD::color=theme.Text2;
             name = Pop::getAString(PopTag::TAG_AUTHOR);
             
-            LCD::cursorY=105;
+            LCD::cursorY=105+3+1;
 
             if(name)
             {
@@ -717,36 +763,36 @@ void Loader::drawItemCoverflow(std::size_t num)
             LCD::cursorX=(LCD::WIDTH-strlen(m_Items[num].displayName)*6)/2;
             LCD::print(m_Items[num].displayName);
             
-            m_drawDefaultBanner(10, 12, m_Items[num].Type);
+            m_drawDefaultBanner(10, 15, m_Items[num].Type);
         }
     }
     LCD::color=theme.Text;
 
-    drawHollowRoundRect(2+num*43, 121, 38, 38, m_selecteditem==num?theme.Selected:theme.BackgroundBottom);
-    LCD::drawRectangle(5+num*43, 123, 38, 38, theme.BackgroundTop);
+    drawHollowRoundRect(2+num*43, 121+1, 38, 38, m_selecteditem==num?theme.Selected:theme.BackgroundBottom);
+    LCD::drawRectangle(5+num*43, 123+1, 38, 38, theme.BackgroundTop);
     //LCD::drawRectangle(4+num*43, 122, 40, 40, theme.Background);
 
     if(m_Items[num].Type==ItemType::Pop)
     {
         
-        if(!Pop::drawIcon36(6+num*43, 124))
+        if(!Pop::drawIcon36(6+num*43, 124+1))
         {
-            LCD::fillRectangle(6+num*43, 124, 36, 36, theme.Boxes);
-            LCD::drawBitmap16(6+num*43+6, 124+6, 24, 24,  m_icons[static_cast<int>(m_Items[num].Type)],  popPalette, Colors::PINK, theme.Boxes);
+            LCD::fillRectangle(6+num*43, 124+1, 36, 36, theme.Boxes);
+            LCD::drawBitmap565(6+num*43+6, 124+6+1, 24, 24, theme.icons[static_cast<int>(m_Items[num].Type)]);
         }
         
         if(m_selecteditem==num)
         {
-            if(!Pop::drawBanner(10, 12))
-                m_drawDefaultBanner(10, 12, m_Items[num].Type);
+            if(!Pop::drawBanner(10, 15))
+                m_drawDefaultBanner(10, 15, m_Items[num].Type);
             
             LCD::selectedFont=FontSize::Small;
             LCD::color=theme.Text;
             char *version = Pop::getAString(PopTag::TAG_VERSION);
-            LCD::cursorY=84;
+            LCD::cursorY=84+3;
             if(version)
             {
-                drawRoundRect(LCD::WIDTH-25-strlen(version)*4, 83, 10+strlen(version)*4, 7, theme.Boxes);
+                drawRoundRect(LCD::WIDTH-25-strlen(version)*4, 83+3, 10+strlen(version)*4, 7, theme.Boxes);
                 LCD::cursorX=LCD::WIDTH-20-strlen(version)*4;
                 LCD::print(version);
                 delete version;
@@ -756,8 +802,8 @@ void Loader::drawItemCoverflow(std::size_t num)
     }
     else
     {
-        LCD::fillRectangle(6+num*43, 124, 36, 36, theme.Boxes);
-        LCD::drawBitmap16(6+num*43+6, 124+1, 24, 24,  m_icons[static_cast<int>(m_Items[num].Type)],  popPalette, Colors::PINK, theme.Boxes);
+        LCD::fillRectangle(6+num*43, 124+1, 36, 36, theme.Boxes);
+        LCD::drawBitmap565(6+num*43+6, 124+1+1, 24, 24, theme.icons[static_cast<int>(m_Items[num].Type)]);
         
         LCD::selectedFont=FontSize::Small;
 
@@ -783,7 +829,7 @@ void Loader::drawItemCoverflow(std::size_t num)
             offset=((9-strlen(name))*(LCD::fonts[static_cast<std::uint8_t>(LCD::selectedFont)].width+1))>>1;
 
         LCD::cursorX = 6+num*43+1+offset;
-        LCD::cursorY = 151;
+        LCD::cursorY = 151+1;
         LCD::print(name);
         LCD::selectedFont=FontSize::Big;
     }
@@ -793,10 +839,10 @@ void Loader::drawItemCoverflow(std::size_t num)
 
 void Loader::drawAllItemsCoverflow()
 {
-    LCD::fillRectangle(0, 92+24, LCD::WIDTH, 7, theme.BackgroundBottom);
+    LCD::fillRectangle(0, 92+24+1, LCD::WIDTH, 7, theme.BackgroundBottom);
 
     for(std::size_t i=m_itemlistcount;i<5;i++)
-        drawRoundRect(2+i*43, 120, 44, 44 , theme.BackgroundBottom);
+        drawRoundRect(2+i*43, 120+1, 44, 44 , theme.BackgroundBottom);
     if(m_itemlistcount==0)
         return;
     for(std::size_t i=0;i<m_itemlistcount;i++)
@@ -820,7 +866,7 @@ void Loader::infoPopup()
     {
         Pop::open(m_Items[m_selecteditem].fullPath);
         if(!Pop::drawIcon36(10, 25))
-            LCD::drawBitmap16(15, 30, 24, 24, m_icons[static_cast<int>(m_Items[m_selecteditem].Type)],  popPalette, Colors::PINK, theme.Boxes);
+            LCD::drawBitmap565(15, 30, 24, 24, theme.icons[static_cast<int>(m_Items[m_selecteditem].Type)]);
         else
             LCD::drawRectangle(9, 24, 38, 38, theme.Text);
 
@@ -898,7 +944,8 @@ void Loader::infoPopup()
     else
     {
         but_offset=50;
-        LCD::drawBitmap16(15, 30, 24, 24, m_icons[static_cast<int>(m_Items[m_selecteditem].Type)], popPalette, PINK, theme.Boxes);
+
+        LCD::drawBitmap565(15, 30, 24, 24, theme.icons[static_cast<int>(m_Items[m_selecteditem].Type)]);
         LCD::color=theme.Text;
         LCD::cursorX=50;
         LCD::cursorY=27;
@@ -995,10 +1042,11 @@ bool Loader::loadFile()
         loadFile=Pop::popFile;
 
         if(Pop::findTag(PopTag::TAG_IMG_200x80_565))
+        {
             Pop::drawBanner(10, 42);
-        else
-            noBanner=true;
-        
+            noBanner=false;
+        }
+
         fsize=Pop::seekToCode();
     }
     else if(m_Items[m_selecteditem].Type==ItemType::Gameboy)
@@ -1024,7 +1072,7 @@ bool Loader::loadFile()
         f_lseek(&GBFile, 0);
         char Emu[128];
         memset(Emu,0,128);
-        strcat(Emu, ".loader/GameBoy/Bin/");
+        strcat(Emu, "kraken/GameBoy/Bin/");
         if(mapperId==0)
             strcat(Emu, "mbc0");
         else if(mapperId==1)
@@ -1042,7 +1090,7 @@ bool Loader::loadFile()
         else if(ret==1)
             strcat(Emu, ".bin");
         drawLoadScreen();
-        paletteFile=FileMenu(".loader/GameBoy/Palettes");
+        paletteFile=FileMenu("kraken/GameBoy/Palettes");
 
         drawLoadScreen();
 
@@ -1204,7 +1252,7 @@ void Loader::drawLoadScreen()
 
     drawRoundRect(10 ,110+13 ,LCD::WIDTH-20, 20, theme.Banner);
 
-    LCD::drawBitmap16(98, 76, 24, 24, m_icons[static_cast<int>(m_Items[m_selecteditem].Type)], popPalette, PINK, theme.Boxes);
+    LCD::drawBitmap565(98, 76, 24, 24, theme.icons[static_cast<int>(m_Items[m_selecteditem].Type)]);
 }
 
 void Loader::m_pushPrev()
@@ -1224,62 +1272,107 @@ void Loader::m_pullPrev()
     m_beginitem=m_prevBeginitem[m_pPrev];
 }
 
-char* Loader::FileMenu(const char *Folder)
+char* Loader::FileMenu(const char *Folder, bool FileOrFolder)
 {
-    FATFS_DIR dir;
+    char * ret=0;
+    static FATFS_DIR dir;
     static FILINFO finfo;
-    FRESULT res=f_opendir(&dir, m_curDir);
+    FRESULT res=f_opendir(&dir, Folder);
 
     char nameBuffer[_MAX_LFN+1];
     finfo.lfname=nameBuffer;
     finfo.lfsize=_MAX_LFN;
 
+    size_t index=0;
+    size_t selected=0;
+
     if(res!=FR_OK)
         return 0;
 
     char* filemenu[15];
-    std::size_t fcount=0;
-    for(auto i=0;i<15;)
+    std::int32_t fcount=0;
+    std::size_t totalCount=0;
+
+    while(true)
     {
-        char *fileName=0;
         res = f_readdir(&dir, &finfo);
         if(res!=FR_OK || finfo.fname[0]==0)
             break;
-        if(finfo.lfname[0]!=0)
-            fileName=finfo.lfname;
-        else
-            fileName=finfo.fname;
 
-        if(finfo.fattrib & AM_ARC)
-        {
-            filemenu[i] = new char[128];
-            filemenu[i][0]=0;
-            strcpy(filemenu[i], fileName);
-            fcount++;
-            i++;
-        }
-
+        if(finfo.fattrib & (FileOrFolder?AM_ARC:AM_DIR))
+            totalCount++;
     }
-    if(fcount==0)
-        return 0;
+    
 
-    std::size_t ret=Settings::popupMenu(const_cast<const char**>(filemenu), fcount);
-    if(ret < fcount)
+    while (true)
     {
-        char *path=new char[128];
-        path[0]=0;
-        strcat(path, Folder);
-        strcat(path, "/");
-        strcat(path, filemenu[ret]);
+        f_opendir(&dir, Folder);
+        fcount=0;
 
-        for(std::size_t i=0; i<fcount ; i++)
+        for(std::size_t i=0;i<index;i++)
+            f_readdir(&dir, &finfo);
+    
+        for(size_t i=0;i<15;)
         {
-            delete filemenu[i];
-        }
+            char *fileName=0;
+            res = f_readdir(&dir, &finfo);
+            if(res!=FR_OK || finfo.fname[0]==0)
+                break;
+            if(finfo.lfname[0]!=0)
+                fileName=finfo.lfname;
+            else
+                fileName=finfo.fname;
 
-        return path;
+            if(finfo.fattrib & (FileOrFolder?AM_ARC:AM_DIR))
+            {
+                filemenu[i] = new char[28];
+                filemenu[i][0]=0;
+                memcpy(filemenu[i], fileName, 28);
+                filemenu[i][27]=0;
+                fcount++;
+                i++;
+            }
+
+        }
+        if(fcount==0)
+            return 0;
+
+        std::int32_t value=Settings::popupMenu(const_cast<const char**>(filemenu), fcount, index, totalCount, selected);
+        if(value >= 0 && value < fcount )
+        {
+            char *path=new char[128];
+            path[0]=0;
+            strcat(path, Folder);
+            strcat(path, "/");
+            strcat(path, filemenu[value]);
+            
+            ret= path;
+        }
+        for(auto i=0; i<fcount ; i++)
+            delete filemenu[i];
+
+        if(value==-1 || ret!=0)
+            break;
+
+        if(value==-2)
+        {
+            if(index >= 15)
+            {
+                index-=15;
+                selected=14;
+            }
+        }
+        if(value==-3)
+        {
+            if(index+15<totalCount)
+            {
+                index+=15;
+                selected=0;
+            }
+        }
     }
-    return 0;
+
+    return ret;
 }
 
 void Loader::m_nextItem()
@@ -1371,16 +1464,39 @@ void Loader::m_reloadItems()
 
 bool Loader::m_drawDefaultBanner(uint16_t x, uint16_t y, ItemType Type)
 {
+    char path[_MAX_LFN+1];
+    path[0]=0;
+    strcat(path, "kraken/Themes/");
+    strcat(path, settings.theme);
+    strcat(path, "/banners/");
+
     FIL BNFile;
 
     FRESULT res=FRESULT::FR_NO_PATH;
     if(Type==ItemType::Gameboy)
-        res=f_open(&BNFile, ".loader/GameBoy/banner", FA_READ);
+        strcat(path, "gb.565");
     else if(Type==ItemType::BinGame || Type==ItemType::Pop)
-        res=f_open(&BNFile, ".loader/gamebanner", FA_READ);
+        strcat(path, "game.565");
+    else if(Type==ItemType::Folder)
+    {
+        size_t len=strlen(path);
+        char *folderName;
+        folderName=strrchr(m_Items[m_selecteditem].fullPath,'/')+1;
+        strcat(path, folderName);
+        strcat(path, ".565");
+        res=f_open(&BNFile, path, FA_READ);
+        if(res!=FR_OK)
+        {
+            path[len]=0;
+            strcat(path, "default.565");
+        }
+        else
+            f_close(&BNFile);
+    }
     else
-        res=f_open(&BNFile, ".loader/banner", FA_READ);
+        strcat(path, "default.565");
 
+    res=f_open(&BNFile, path, FA_READ);
     if(res==FR_OK)
     {
         LCD::drawBitmap565File(&BNFile, x, y, 200, 80);
@@ -1403,10 +1519,16 @@ void Loader::m_getExtension(char* ext, char *fileName)
 
 bool Loader::m_drawBootSplash()
 {
+    char path[_MAX_LFN+1];
+    path[0]=0;
+    strcat(path, "kraken/Themes/");
+    strcat(path, settings.theme);
+    strcat(path, "/bootsplash.565");
+
     FIL BNFile;
 
     FRESULT res=FRESULT::FR_NO_PATH;
-    res=f_open(&BNFile, ".loader/bootsplash", FA_READ);
+    res=f_open(&BNFile, path, FA_READ);
     if(res==FR_OK)
     {
         LCD::drawBitmap565File(&BNFile, 0, 0, 220, 176);
@@ -1416,43 +1538,13 @@ bool Loader::m_drawBootSplash()
     return false;
 }
 
-bool Loader::m_loadIcons()
-{
-    
-    for(auto i=0;i<5;i++)
-    {
-        FIL IconFile;
-        FRESULT res=FRESULT::FR_NO_PATH;
-        if(i==static_cast<int>(ItemType::Folder))
-            res=f_open(&IconFile, ".loader/icons/Folder", FA_READ);
-        if(i==static_cast<int>(ItemType::File))
-            res=f_open(&IconFile, ".loader/icons/File", FA_READ);
-        if(i==static_cast<int>(ItemType::BinGame) || i==static_cast<int>(ItemType::Pop))
-            res=f_open(&IconFile, ".loader/icons/Game", FA_READ);
-        if(i==static_cast<int>(ItemType::Gameboy))
-            res=f_open(&IconFile, ".loader/icons/GB", FA_READ);
-        if(res!=FR_OK)
-        {
-            f_close(&IconFile);
-            return false;
-        }
-        m_icons[i] = new std::uint8_t[12*24];
-        std::size_t count;
-        f_read(&IconFile, m_icons[i], 12*24 ,&count);
-
-        f_close(&IconFile);
-    }
-
-    return true;
-}
-
 bool Loader::m_scanFolderForGames(const char* currentDir, const char *name)
 {
     if(name[0]=='.')
         return false;
 
-    static FATFS_DIR dir;
-    static FILINFO finfo;
+    FATFS_DIR dir;
+    FILINFO finfo;
 
     char nameBuffer[_MAX_LFN+1];
     finfo.lfname = nameBuffer;
@@ -1463,33 +1555,36 @@ bool Loader::m_scanFolderForGames(const char* currentDir, const char *name)
     strcat(path, currentDir);
     strcat(path, "/");
     strcat(path, name);
+    char* fileName;
 
-    FRESULT res=f_opendir(&dir, path);
-    if(res==FR_OK )
+    if(f_opendir(&dir, path)==FR_OK)
     {
         while(f_readdir(&dir, &finfo)==FR_OK && finfo.fname[0]!=0)
         {
-            char extension[4];
-            if(finfo.lfname[0]!=0)
-                m_getExtension(extension, finfo.lfname);
-            else
-                m_getExtension(extension, finfo.fname);
-            
-            if(finfo.fattrib & AM_DIR)
-                return m_scanFolderForGames(path, finfo.lfname[0]!=0?finfo.lfname:finfo.fname);
-
-            if((strcmp(extension, "pop")==0) || (strcmp(extension, "gb")==0))
-                return true;
-
-            if(strcmp(extension,"bin")==0)
+            fileName=finfo.lfname[0]!=0?finfo.lfname:finfo.fname;
+            if((finfo.fattrib & AM_DIR ))
             {
-                char fPath[_MAX_LFN+1];
-                fPath[0]=0;
-                strcat(fPath, path);
-                strcat(fPath, "/");
-                strcat(fPath, finfo.lfname[0]!=0?finfo.lfname:finfo.fname);
-                
-                return m_binIsGame(fPath);
+                if(m_scanFolderForGames(path, fileName))
+                    return true;
+            }
+            if(finfo.fattrib & AM_ARC)
+            {
+                char extension[4];
+                m_getExtension(extension, fileName);
+                if((strcmp(extension, "pop")==0) || (strcmp(extension, "gb")==0))
+                    return true;
+
+                if(strcmp(extension,"bin")==0)
+                {
+                    char fPath[_MAX_LFN+1];
+                    fPath[0]=0;
+                    strcat(fPath, path);
+                    strcat(fPath, "/");
+                    strcat(fPath, fileName);
+                    
+                    if(m_binIsGame(fPath))
+                        return true;
+                }
             }
         }
     }

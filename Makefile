@@ -21,7 +21,7 @@ vpath %.h .
 SRC_DIR := ./
 OBJ_DIR := ./build/obj
 BIN_DIR := ./build/bin
-BPROJECT := ./build/bin/KRAKENLOADER_v102.DER
+BPROJECT := ./build/bin/KRAKENLOADER_v102
 
 POKITO_EMU_dir := /home/ramzi/PokittoEmu
 

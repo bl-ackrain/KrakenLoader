@@ -116,25 +116,7 @@ bool Pop::m_drawIcon(const uint16_t x, const uint16_t y, const uint16_t size)
 {
     PopTag tag=(size==24)?PopTag::TAG_IMG_24X24_565:PopTag::TAG_IMG_36X36_565;
     if(!findTag(tag))
-    {
-        tag=(size==24)?PopTag::TAG_IMG_24X24_4BPP:PopTag::TAG_IMG_36X36_4BPP;
-        if(!findTag(tag))
-            return false;
-        else
-        {
-            uint8_t buff[(size>1)*size];
-
-            std::size_t count=0;
-            f_read(popFile, buff, sizeof(buff), &count);
-            if(count < sizeof(buff))
-                return false;
-            
-            LCD::drawBitmap16(x, y, size, size,  buff, popPalette, 0xFF, 0);
-            return true;
-        }
-
         return false;
-    }
 
     LCD::drawBitmap565File(popFile, x, y, size, size);
     return true;

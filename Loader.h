@@ -46,10 +46,10 @@ public:
     void run();
     void update();
     void draw();
-    void drawClock();
+    static void drawClock();
     void drawTopBar();
     void drawScrollBar();
-    void drawBottomBar();
+    void drawBottomBar(bool loading=false);
     void drawItem(size_t num);
     void drawItemCoverflow(size_t num);
     void drawAllItems();
@@ -61,9 +61,9 @@ public:
     static bool loadFile();
     static void drawLoadScreen();
     void loadItems();
-    static char* FileMenu(const char *Folder);
+    static char* FileMenu(const char *Folder, bool FileOrFolder=true);
     static SDFileSystem *sdFs;
-    Settings settings;
+    static Settings settings;
     static Theme theme;
 private:
     void m_nextItem();
@@ -79,7 +79,7 @@ private:
     static bool m_drawDefaultBanner(uint16_t x, uint16_t y, ItemType Type);
     static bool m_drawBootSplash();
     static void m_getExtension(char* ext, char *fileName);
-    static bool m_loadIcons();
+
     static bool m_scanFolderForGames(const char* currentDir, const char *name);
     static bool m_binIsGame(const char* path);
     static size_t m_itemcount;
@@ -89,14 +89,11 @@ private:
     static bool m_redraw;
     static char m_curDir[_MAX_LFN+1];
     static uint16_t m_indexs[512];
-    time_t m_seconds;
+    static time_t m_seconds;
     static State m_state;
     static State m_oldstate;
     static size_t m_prevSelecteditem[10];
     static size_t m_prevBeginitem[10];
     static uint8_t m_pPrev;
 
-
-    static std::uint8_t* m_icons[4]; 
- 
 };

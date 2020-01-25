@@ -96,12 +96,9 @@ void LCD::Init()
 
     fonts[0].data = nullptr;
     fonts[1].data = nullptr;
-    //SETUP BACKLIGHT
-    LPC_IOCON->PIO2_2 = 0; //set pin function back to 0
 
-    LPC_GPIO_PORT->DIR[2] |= (1  << 2 );
-    LPC_GPIO_PORT->SET[2] = 1 << 2; // full background light, smaller file size
-    //wait_ms(200);
+    initBacklight();
+    setBacklight(40); //40%
 }
 
 void LCD::LoadFont(const char * path, FontSize fontsize)
@@ -212,6 +209,43 @@ void LCD::drawBitmap16(int x, int y, uint16_t w, uint16_t h, const uint8_t bitma
         }
 }
 
+void LCD::m_drawBitmapLine565(std::uint16_t* buffer, uint16_t w)
+{
+    for(auto i=0;i<(w>>2);i++)
+    {
+        LPC_GPIO_PORT->MPIN[2] = (*buffer++)<<3;
+        CLR_WR;
+        SET_WR;
+        LPC_GPIO_PORT->MPIN[2] = (*buffer++)<<3;
+        CLR_WR;
+        SET_WR;
+        LPC_GPIO_PORT->MPIN[2] = (*buffer++)<<3;
+        CLR_WR;
+        SET_WR;
+        LPC_GPIO_PORT->MPIN[2] = (*buffer++)<<3;
+        CLR_WR;
+        SET_WR;
+    }
+}
+
+void LCD::drawBitmap565(int x, int y, uint16_t w, uint16_t h, std::uint16_t* buffer)
+{
+
+    setWindow(y, x, y+h-1, x+w-1);
+
+    SET_MASK_P2;
+    CLR_CS_SET_CD_RD_WR;
+    for(std::size_t j=0;j<h;j++)
+    {
+        uint16_t *ptr=&buffer[w*j];
+        m_drawBitmapLine565(ptr, w);
+    }
+    
+    CLR_MASK_P2;
+    SET_CS;
+    setWindow(0, 0, HEIGHT-1, WIDTH-1);
+}
+
 void LCD::drawBitmap565File(FIL* file, int x, int y, uint16_t w, uint16_t h, std::size_t Xoffset)
 {
 
@@ -227,22 +261,7 @@ void LCD::drawBitmap565File(FIL* file, int x, int y, uint16_t w, uint16_t h, std
         if(Xoffset)
             f_lseek(file, file->fptr + Xoffset*2);
         uint16_t *ptr=buff;
-        for(auto i=0;i<w>>2;i++)
-        {
-            LPC_GPIO_PORT->MPIN[2] = (*ptr++)<<3;
-            CLR_WR;
-            SET_WR;
-            LPC_GPIO_PORT->MPIN[2] = (*ptr++)<<3;
-            CLR_WR;
-            SET_WR;
-            LPC_GPIO_PORT->MPIN[2] = (*ptr++)<<3;
-            CLR_WR;
-            SET_WR;
-            LPC_GPIO_PORT->MPIN[2] = (*ptr++)<<3;
-            CLR_WR;
-            SET_WR;
-        }
-
+        m_drawBitmapLine565(ptr, w);
     }
     
     CLR_MASK_P2;
@@ -350,4 +369,27 @@ std::uint16_t LCD::RGB24toRGB16(std::uint32_t sourceColor)
     color |= ((red >> 3) << 11);
 
 	return color;
+}
+
+void LCD::setBacklight(std::uint8_t value)
+{
+    LPC_SCT0->MATCHREL0 = 20000;
+    LPC_SCT0->MATCHREL1 = (LPC_SCT0->MATCHREL0 * value)/100; 
+
+    LPC_SCT0->CTRL &= ~(1 << 2);
+}
+void LCD::initBacklight()
+{
+    LPC_SYSCON->SYSAHBCLKCTRL |= (1<<31);
+    LPC_SYSCON->PRESETCTRL |=  (1 << (0 + 9));
+    LPC_IOCON->PIO2_2 = (LPC_IOCON->PIO2_2 & ~(0x3FF)) | 0x3;     //set up pin for PWM use
+    LPC_SCT0->CONFIG |= ((0x3 << 17) | 0x01);
+    LPC_SCT0->CTRL |= (1 << 2) | (1 << 3);
+
+    LPC_SCT0->OUT1_SET = (1 << 0); // event 0
+    LPC_SCT0->OUT1_CLR = (1 << 1); // event 1
+    LPC_SCT0->EV0_CTRL  = (1 << 12);
+    LPC_SCT0->EV0_STATE = 0xFFFFFFFF;
+    LPC_SCT0->EV1_CTRL  = (1 << 12) | (1 << 0);
+    LPC_SCT0->EV1_STATE = 0xFFFFFFFF;
 }

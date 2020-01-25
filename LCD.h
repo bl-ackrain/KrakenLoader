@@ -68,12 +68,15 @@ public:
     static void setWindow(uint8_t x1, uint8_t y1, uint8_t x2, uint8_t y2);
     static void LoadFont(const char * path, FontSize fontsize);
     static std::uint16_t RGB24toRGB16(std::uint32_t sourceColor);
+    static void initBacklight();
+    static void setBacklight(std::uint8_t value);
 
     static void Clear(uint16_t color);
     static void drawPixel(int x, int y, uint16_t color);
     static void fillRectangle(int x, int y, int w, int h, uint16_t color);
     static void drawRectangle(int x, int y, int w, int h, uint16_t color);
     static void drawBitmap16(int x, int y, uint16_t w, uint16_t h, const uint8_t bitmap[], const uint16_t palette[], uint8_t transparentColor, uint16_t replaceWith);
+    static void drawBitmap565(int x, int y, uint16_t w, uint16_t h, std::uint16_t* buffer);
     static void drawBitmap565File(FIL* file, int x, int y, uint16_t w, uint16_t h, std::size_t Xoffset=0);
     static void drawChar(int x, int y, uint8_t c);
     static void write(uint8_t c);
@@ -85,6 +88,7 @@ public:
     static FontSize selectedFont;
     static uint16_t color;
 private:
+    static inline void m_drawBitmapLine565(std::uint16_t* buffer, uint16_t w);
     static constexpr const uint8_t m_lcdbootcmd[LCDBOOTCMDSIZE]={
         0x01, 0x02, 0x03, 0x08, 0x0C, 0x0F, 0x20, 0x21, 0x10, 0x11, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0xff, 0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0xB0, 0xFF, 0x07};
 

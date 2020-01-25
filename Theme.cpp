@@ -5,19 +5,33 @@
 #include "LCD.h"
 #include "Loader.h"
 
+std::uint16_t* Theme::icons[5]={nullptr};
 
-bool Theme::loadTheme(const char* path)
+bool Theme::loadTheme(const char* name)
 {
+    char path[_MAX_LFN+1];
+    path[0]=0;
+    strcat(path, "kraken/Themes/");
+    strcat(path, name);
+    
+
+    if(!loadIcons(path))
+        return false;
+
+    strcat(path, "/colors.txt");
     FIL fh;
     FRESULT res = f_open(&fh, path, FA_READ);
+    
     if(res==FR_OK)
     {
-        char* data = new char[fh.fsize];
+        char *data = new char[fh.fsize];
         std::size_t n;
         f_read(&fh, data, fh.fsize, &n);
         f_close(&fh);
 
         themeParser(data, fh.fsize);
+        delete data;
+        return true;
     }
     return false;
 }
@@ -113,5 +127,45 @@ bool Theme::themeParser(const char* str, std::size_t size)
         else
             i++;
     }
-    return false;
+    return true;
+}
+
+bool Theme::loadIcons(const char* path)
+{
+    char iconPath[_MAX_LFN+1];
+    
+    for(auto i=0;i<5;i++)
+    {
+        if(icons[i]!=nullptr)
+            delete icons[i];
+
+        iconPath[0]=0;
+        strcat(iconPath, path);
+        strcat(iconPath, "/icons/");
+        
+        FIL IconFile;
+        FRESULT res=FRESULT::FR_NO_PATH;
+        if(i==static_cast<int>(ItemType::Folder))
+            strcat(iconPath, "Folder.565");
+        if(i==static_cast<int>(ItemType::File))
+            strcat(iconPath, "File.565");
+        if(i==static_cast<int>(ItemType::BinGame) || i==static_cast<int>(ItemType::Pop))
+            strcat(iconPath, "Game.565");
+        if(i==static_cast<int>(ItemType::Gameboy))
+            strcat(iconPath, "GB.565");
+        
+        res=f_open(&IconFile, iconPath, FA_READ);
+        if(res!=FR_OK)
+        {
+            f_close(&IconFile);
+            return false;
+        }
+        icons[i] = new std::uint16_t[24*24];
+        std::size_t count;
+        f_read(&IconFile, icons[i], 24*24*2 ,&count);
+
+        f_close(&IconFile);
+    }
+
+    return true;
 }

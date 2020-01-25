@@ -4,17 +4,17 @@
 #include "Palette.h"
 #include "iap.h"
 #include "Loader.h"
+#include <cstring>
+#include <cstdint>
 
-const char *Settings::m_entries[8]={"View Mode", "Show All Files", "Loader Wait", "Volume Wait", "Time Format" , "Date Format", "Time", "Date"};
+const char *Settings::m_entries[]={"Theme", "View Mode", "Show All Files", "Loader Wait", "Volume Wait", "Time Format" , "Date Format", "Time", "Date"};
 
 void rtc_write(time_t t)
 {
     // Disabled RTC
     LPC_RTC->CTRL &= ~(1 << 7);
-
     // Set count
     LPC_RTC->COUNT = t;
-
     //Enabled RTC
     LPC_RTC->CTRL |= (1 << 7);
 }
@@ -22,13 +22,35 @@ void rtc_write(time_t t)
 void Settings::Init()
 {
     //ShowAllFiles=true;
-    readEEPROM(reinterpret_cast<uint16_t*>(EESETTINGS_SHOWALLFILES),&ShowAllFiles,1);
-    readEEPROM(reinterpret_cast<uint16_t*>(EESETTINGS_VIEWMODE),reinterpret_cast<uint8_t*>(&viewmode),1);
-    readEEPROM(reinterpret_cast<uint16_t*>(EESETTINGS_LOADERWAIT),&m_loaderwait,1);
-    readEEPROM(reinterpret_cast<uint16_t*>(EESETTINGS_VOLWAIT),&m_volumewait,1);
-    readEEPROM(reinterpret_cast<uint16_t*>(EESETTINGS_TIMEFORMAT),&m_timeformat,1);
-    readEEPROM(reinterpret_cast<uint16_t*>(EESETTINGS_DATEFORMAT),&m_dateformat,1);
+    readEEPROM(reinterpret_cast<uint16_t*>(EESETTINGS_SHOWALLFILES), &ShowAllFiles, 1);
+    readEEPROM(reinterpret_cast<uint16_t*>(EESETTINGS_VIEWMODE), reinterpret_cast<uint8_t*>(&viewmode), 1);
+    readEEPROM(reinterpret_cast<uint16_t*>(EESETTINGS_LOADERWAIT), &m_loaderwait, 1);
+    readEEPROM(reinterpret_cast<uint16_t*>(EESETTINGS_VOLWAIT), &m_volumewait, 1);
+    readEEPROM(reinterpret_cast<uint16_t*>(EESETTINGS_TIMEFORMAT), &m_timeformat, 1);
+    readEEPROM(reinterpret_cast<uint16_t*>(EESETTINGS_DATEFORMAT), &m_dateformat, 1);
 
+    readEEPROM(reinterpret_cast<uint16_t*>(COOKIE_DATA_ADDRESS), reinterpret_cast<std::uint8_t*>(&theme[0]), 32);
+
+    if(m_loaderwait==0)
+    {
+        m_loaderwait=3;
+        writeEEPROM(reinterpret_cast<uint16_t*>(EESETTINGS_LOADERWAIT), &m_loaderwait,1);
+        m_volumewait=10;
+        writeEEPROM(reinterpret_cast<uint16_t*>(EESETTINGS_VOLWAIT), &m_volumewait,1);
+        std::uint8_t vol=127;
+        writeEEPROM(reinterpret_cast<uint16_t*>(EESETTINGS_VOL), &vol,1);
+        rtc_write(1575158400);//12/01/2019 @ 12:00am (UTC)
+    }
+    
+    char path[_MAX_LFN+1];
+    path[0]=0;
+    strcat(path, "kraken/Themes/");
+    strcat(path, theme);
+
+    FATFS_DIR dir;
+    if((f_opendir(&dir, path)!=FR_OK) || theme[0]==0)
+        saveTheme("default");
+    
     m_redraw=true;
 }
 
@@ -41,7 +63,7 @@ bool Settings::update()
         drawEntries();
     }else if(Buttons::repeat(Buttons::BTN_DOWN,20000))
     {
-         if(m_selected < 7 )
+         if(m_selected < 8 )
            m_selected ++;
         drawEntries();
     }
@@ -52,6 +74,19 @@ bool Settings::update()
         {
         case 0:
             {
+                const char *fullThemePath=Loader::FileMenu("kraken/Themes", false);
+                
+                if(fullThemePath!=0)
+                {
+                    char *themeName=strrchr(fullThemePath,'/')+1;
+                    saveTheme(themeName);
+                    Loader::theme.loadTheme(themeName);
+                }
+                
+            }
+            break;
+        case 1:
+            {
                 const char *menu_entries[]={"Icons", "List"};
                 uint8_t ret=popupMenu( menu_entries,2);
                 if(ret < 2)
@@ -61,7 +96,7 @@ bool Settings::update()
                 }
             }
             break;
-        case 1:
+        case 2:
             {
                 const char *menu_entries[]={"No", "Yes"};
                 size_t ret=popupMenu( menu_entries,2);
@@ -72,7 +107,7 @@ bool Settings::update()
                 }
             }
             break;
-        case 2:
+        case 3:
             {
                 const char *menu_entries[]={"1s" ,"2s","3s","4s","5s"};
                 size_t ret=popupMenu( menu_entries, 5);
@@ -83,7 +118,7 @@ bool Settings::update()
                 }
             }
             break;
-        case 3:
+        case 4:
             {
                 const char *menu_entries[]={"0s", "1s", "2s", "3s", "4s", "5s", "6s" ,"7s" ,"8s" ,"9s" ,"10s"};
                 size_t ret=popupMenu( menu_entries, 11);
@@ -95,7 +130,7 @@ bool Settings::update()
 
             }
             break;
-        case 4:
+        case 5:
             {
                 const char *menu_entries[]={"24H", "12H"};
                 size_t ret=popupMenu( menu_entries,2);
@@ -107,7 +142,7 @@ bool Settings::update()
 
             }
             break;
-        case 5:
+        case 6:
             {
                 const char *menu_entries[]={"DMY", "MDY"};
                 size_t ret=popupMenu( menu_entries,2);
@@ -119,9 +154,9 @@ bool Settings::update()
 
             }
             break;
-        case 6:
+        case 7:
             {
-                time_t seconds = time(NULL);
+                time_t seconds = (time_t)LPC_RTC->COUNT;
                 struct tm *tmp = gmtime(&seconds);
                 size_t t=timePicker(m_timeformat==0, tmp);
                 if(t!=0xFFFFFFFF)
@@ -130,9 +165,9 @@ bool Settings::update()
                 }
             }
             break;
-        case 7:
+        case 8:
             {
-                time_t seconds = time(NULL);
+                time_t seconds = (time_t)LPC_RTC->COUNT;
                 struct tm *tmp = gmtime(&seconds);
                 size_t t=datePicker(m_dateformat, tmp);
                 if(t!=0xFFFFFFFF)
@@ -164,11 +199,13 @@ void Settings::draw()
     else
         m_redraw=false;
     
-    LCD::Clear(Loader::theme.Background);
+    LCD::Clear(Loader::theme.BackgroundTop);
+
+    Loader::drawRoundRect(2, -2, LCD::WIDTH-4, 10+4, Loader::theme.Boxes);
+    LCD::fillRectangle(4, 11, LCD::WIDTH-8, 1, Loader::theme.Boxes+0x2965);
 
 
-    Loader::drawRoundRect(2, 1, 70, 10, Loader::theme.Boxes);
-
+    Loader::drawClock();
     LCD::cursorX=17;
     LCD::cursorY=2;
     LCD::color=Loader::theme.Text;
@@ -181,48 +218,58 @@ void Settings::draw()
 
 void Settings::drawEntries()
 {
-    for(size_t i = 0 ;i < 8; i++)
+    for(size_t i = 0 ;i < sizeof(m_entries)/sizeof(void*); i++)
     {
 
-        LCD::fillRectangle(5,10+5+i*20, LCD::WIDTH-10,20-2, m_selected==i?Loader::theme.Selected:Loader::theme.Boxes);
+        LCD::fillRectangle(5,15+i*15, LCD::WIDTH-10,15-2, m_selected==i?Loader::theme.Selected:Loader::theme.Boxes);
         if(m_selected==i)
             LCD::color=Loader::theme.SelectedText;
         else
             LCD::color=Loader::theme.Text;
 
         LCD::cursorX = 20;
-        LCD::cursorY = 10+11+i*20;
+        LCD::cursorY = 10+8+i*15;
         LCD::print(m_entries[i]);
 
-        LCD::cursorX=140;
+        LCD::cursorX=120;
         //LCD::cursorY=15+11+i*20;
-        time_t seconds = time(NULL);
+        time_t seconds = (time_t)LPC_RTC->COUNT;
         struct tm *tmp = gmtime(&seconds);
         switch(i)
         {
         case 0:
+                for(std::size_t i=0; i<15;i++)
+                {
+                    if(theme[i]==0)
+                        break;
+                    LCD::write(theme[i]);
+                    if(i==14)
+                        LCD::write('.');
+                }
+            break;
+        case 1:
             if(viewmode==ViewMode::Icons)
                 LCD::print("Icons");
             else if(viewmode==ViewMode::List)
                 LCD::print("List");
             break;
-        case 1:
+        case 2:
             if(ShowAllFiles)
                 LCD::print("Yes");
             else
                 LCD::print("No");
             break;
-        case 2:
+        case 3:
             
             LCD::printNumber(m_loaderwait);
             LCD::print(" Sec");
             break;
-        case 3:
+        case 4:
  
             LCD::printNumber(m_volumewait);
             LCD::print(" Sec");
             break;
-        case 4:
+        case 5:
 
             if(m_timeformat==0)
                 LCD::printNumber(24);
@@ -230,7 +277,7 @@ void Settings::drawEntries()
                 LCD::printNumber(12);
             LCD::write('H');
             break;
-        case 5:
+        case 6:
 
             if(m_dateformat==0)
                 LCD::print("DM");
@@ -238,7 +285,7 @@ void Settings::drawEntries()
                 LCD::print("MD");
             LCD::write('Y');
             break;
-        case 6:
+        case 7:
 
             if(m_timeformat==0)
             {
@@ -256,7 +303,7 @@ void Settings::drawEntries()
                 LCD::write('M');
             }
             break;
-        case 7:
+        case 8:
 
             if(m_dateformat==0)
             {
@@ -279,18 +326,41 @@ void Settings::drawEntries()
     }
 }
 
-size_t Settings::popupMenu(const char *entries[], size_t NumOfEntries)
+int32_t Settings::popupMenu(const char *entries[], size_t NumOfEntries, size_t EntriesStart, size_t TotalEntries, size_t EntrieSelected)
 {
-    size_t selected=0;
+    size_t selected=EntrieSelected;
     bool redraw=true;
     size_t menuYOffset=(176-10*NumOfEntries)/2;
     Loader::drawRoundRect(10,menuYOffset-10,LCD::WIDTH-20,20+10*NumOfEntries, Loader::theme.BoxBorder);
     LCD::fillRectangle(12, menuYOffset-10+2, LCD::WIDTH-24, 20+10*NumOfEntries-4, Loader::theme.Boxes);
+
+    if(TotalEntries>15)
+    {
+        menuYOffset=13;
+        Loader::drawRoundRect(10,menuYOffset-10,LCD::WIDTH-20,20+10*15, Loader::theme.BoxBorder);
+        LCD::fillRectangle(12, menuYOffset-10+2, LCD::WIDTH-24, 20+10*15-4, Loader::theme.Boxes);
+    }
     LCD::color=Loader::theme.Text;
     LCD::cursorX=20;
     LCD::cursorY=menuYOffset-7;
     LCD::print("Choose value");
     LCD::fillRectangle(15,menuYOffset+3,LCD::WIDTH-30,1, Loader::theme.BoxBorder);
+
+    //scroll Bar
+
+    if(TotalEntries > 15)
+    {
+        std::size_t div=150/((TotalEntries+14)/15);
+        std::size_t div10=1500/((TotalEntries+14)/15);
+
+        std::size_t start=15+5+(div*(EntriesStart/15))+(div10*(EntriesStart/15))/100;
+        if(start > 150+15-div)
+            start=150+15-div;
+
+        LCD::fillRectangle(LCD::WIDTH-16, start , 3, div, Loader::theme.Selected);
+    }
+
+
     while(true)
     {
         Buttons::update();
@@ -299,7 +369,7 @@ size_t Settings::popupMenu(const char *entries[], size_t NumOfEntries)
         {
             for(size_t i=0;i<NumOfEntries;i++)
             {
-                LCD::fillRectangle(11+2,5+10*i+menuYOffset,LCD::WIDTH-22-4,10, selected==i?Loader::theme.Selected:Loader::theme.Boxes);
+                LCD::fillRectangle(11+2,5+10*i+menuYOffset,LCD::WIDTH-22-4-5,10, selected==i?Loader::theme.Selected:Loader::theme.Boxes);
                 LCD::color=selected==i?Loader::theme.SelectedText:Loader::theme.Text;
 
                 LCD::cursorX=35;
@@ -309,15 +379,19 @@ size_t Settings::popupMenu(const char *entries[], size_t NumOfEntries)
             redraw=false;
         }
 
-        if(Buttons::repeat(Buttons::BTN_UP,20000))
+        if(Buttons::repeat(Buttons::BTN_UP, 20000))
         {
+            if(selected == 0 && EntriesStart > 0)
+                return -2;
             if(selected > 0)
                 selected--;
             redraw=true;
         }
 
-        if(Buttons::repeat(Buttons::BTN_DOWN,20000))
+        if(Buttons::repeat(Buttons::BTN_DOWN, 20000))
         {
+            if((selected == (NumOfEntries-1))&&  (NumOfEntries+EntriesStart)< TotalEntries  )
+                return -3;
             if(selected < NumOfEntries-1)
                 selected++;
             redraw=true;
@@ -334,15 +408,8 @@ size_t Settings::timePicker(bool format24, struct tm *ltm)
 {
     size_t selected=0;
     bool redraw=true;
-    //uint16_t h = ltm->tm_hour;
-    //uint16_t m = ltm->tm_min;
-    Loader::drawRoundRect(10,51,LCD::WIDTH-20, 74, Loader::theme.BoxBorder);
-    LCD::fillRectangle(12, 51+2, LCD::WIDTH-24, 70, Loader::theme.Boxes);
-    LCD::color=Loader::theme.Text;
-    LCD::cursorX=86;
-    LCD::cursorY=57;
-    LCD::print("Set Time");
-    LCD::fillRectangle(15,70,LCD::WIDTH-30,1, Loader::theme.BoxBorder);
+
+    m_drawPickerFrame(PickerType::Time);
     while(true)
     {
         Buttons::update();
@@ -435,14 +502,7 @@ size_t Settings::datePicker(uint8_t dateFormat, struct tm *ltm)
 {
     size_t selected=0;
     bool redraw=true;
-
-    Loader::drawRoundRect(10,51,LCD::WIDTH-20, 74, Loader::theme.BoxBorder);
-    LCD::fillRectangle(12, 51+2, LCD::WIDTH-24, 70, Loader::theme.Boxes);
-    LCD::color=Loader::theme.Text;
-    LCD::cursorX=86;
-    LCD::cursorY=57;
-    LCD::print("Set Date");
-    LCD::fillRectangle(15,70,LCD::WIDTH-30,1, Loader::theme.BoxBorder);
+    m_drawPickerFrame(PickerType::Date);
     while(true)
     {
         Buttons::update();
@@ -537,4 +597,28 @@ time_t Settings::time_to_epoch( const struct tm *ltm )
 
    utc_hrs = ltm->tm_hour ; // for your time zone.
    return (tdays * 86400) + (utc_hrs * 3600) + (ltm->tm_min * 60) + ltm->tm_sec;
+}
+
+void Settings::saveTheme(const char* name)
+{
+    std::uint8_t cookieName[8];
+    memcpy(cookieName, "Kraken  ", 8);
+    writeEEPROM(reinterpret_cast<uint16_t*>(COOKIE_NAME_ADDRESS), &cookieName[0], 8);
+    std::uint8_t value=0x7F;
+    writeEEPROM(reinterpret_cast<uint16_t*>(COOKIE_KEY_ADDRESS), &value, 1);
+    memcpy(theme, name, strlen(name)+1);
+
+    writeEEPROM(reinterpret_cast<uint16_t*>(COOKIE_DATA_ADDRESS), reinterpret_cast<uint8_t*>(&theme[0]), 32);
+}
+
+void Settings::m_drawPickerFrame(PickerType type)
+{
+    Loader::drawRoundRect(10,51,LCD::WIDTH-20, 74, Loader::theme.BoxBorder);
+    LCD::fillRectangle(12, 51+2, LCD::WIDTH-24, 70, Loader::theme.Boxes);
+    LCD::color=Loader::theme.Text;
+    LCD::cursorX=86;
+    LCD::cursorY=57;
+    LCD::print("Set ");
+    LCD::print((type==PickerType::Date)?"Date":"Time");
+    LCD::fillRectangle(15,70,LCD::WIDTH-30,1, Loader::theme.BoxBorder);
 }

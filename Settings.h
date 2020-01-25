@@ -23,6 +23,9 @@
 #define EESETTINGS_SHOWALLFILES	    4021 // 0xFB5 Show All Files on the loader
 #define EESETTINGS_VIEWMODE  	    4022 // 0xFB6 View Mode of the loader
 
+#define COOKIE_NAME_ADDRESS   0x178
+#define COOKIE_KEY_ADDRESS    0x1EF
+#define COOKIE_DATA_ADDRESS   0xE00
 
 class Settings
 {
@@ -33,18 +36,27 @@ public:
         List
     };
 
+    enum PickerType
+    {
+        Time=0,
+        Date
+    };
+
     void Init();
     bool update();
     void draw();
     void drawEntries();
     uint8_t ShowAllFiles=false;
     ViewMode viewmode=ViewMode::Icons;
-    static size_t popupMenu(const char *entries[], size_t NumOfEntries);
+    static int32_t popupMenu(const char *entries[], size_t NumOfEntries, size_t EntriesStart=0, size_t TotalEntries=0, size_t EntrieSelected=0);
     static size_t timePicker(bool format24, struct tm *ltm);
     static size_t datePicker(uint8_t dateFormat, struct tm *ltm);
     static time_t time_to_epoch(const struct tm *ltm);
+    char theme[32];
+    void saveTheme(const char* name);
 private:
-    static const char *m_entries[8];
+    static void m_drawPickerFrame(PickerType type);
+    static const char *m_entries[];
     bool m_redraw=true;
     size_t m_selected=0;
     uint8_t m_loaderwait=5;
